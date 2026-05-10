@@ -1,0 +1,160 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum NodeType {
+  FOLDER
+  FILE
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String?
+  password     String
+  role         UserRole  @default(USER)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  drives       Drive[]
+  createdNodes Node[]    @relation("NodeCreatedBy")
+  deletedNodes Node[]    @relation("NodeDeletedBy")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+}
+
+// ─── File system ──────────────────────────────────────────────────────────────
+
+model Drive {
+  id        String   @id @default(uuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  usedBytes BigInt   @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  nodes     Node[]
+
+  @@unique([ownerId, name])
+}
+
+model Node {
+  id          String    @id @default(uuid())
+  driveId     String
+  drive       Drive     @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  parentId    String?
+  // Cascade lets deleting a folder remove its entire subtree automatically
+  parent      Node?     @relation("NodeTree", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  children    Node[]    @relation("NodeTree")
+  type        NodeType
+  name        String
+  path        String
+  description String?
+  sizeBytes   BigInt    @default(0)
+  mimeType    String?
+  isFavorite  Boolean   @default(false)
+
+  // ── Recycle bin ─────────────────────────────────────────────────────────────
+  // When a node is trashed:
+  //   • isDeleted is set to true
+  //   • path is rewritten to /__trash__/<id>[/...] so the original path is freed
+  //   • originalPath / originalName are saved for restore
+  //   • parentId is preserved so the subtree hierarchy survives in trash
+  isDeleted    Boolean   @default(false)
+  deletedAt    DateTime?
+  deletedById  String?
+  deletedBy    User?     @relation("NodeDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  originalPath String?
+  originalName String?
+
+  createdById String?
+  createdBy   User?        @relation("NodeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  fileObjects FileObject[]
+  tags        NodeTag[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([driveId, path])
+  @@index([driveId, parentId])
+  @@index([driveId, type])
+  @@index([driveId, isDeleted, deletedAt])
+  @@index([driveId, isFavorite])
+}
+
+// ─── Tagging ──────────────────────────────────────────────────────────────────
+
+model Tag {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  color     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  nodes     NodeTag[]
+}
+
+model NodeTag {
+  nodeId    String
+  tagId     String
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([nodeId, tagId])
+  @@index([tagId])
+}
+
+// ─── Storage buckets ──────────────────────────────────────────────────────────
+
+model Bucket {
+  id           String       @id @default(uuid())
+  providerName String
+  displayName  String?
+  bucketName   String
+  config       Json
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  fileObjects  FileObject[]
+
+  @@unique([providerName, bucketName])
+}
+
+model FileObject {
+  id        String   @id @default(uuid())
+  nodeId    String
+  node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  bucketId  String
+  bucket    Bucket   @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  objectKey String
+  checksum  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bucketId, objectKey])
+  @@index([nodeId])
+  @@index([bucketId])
+}

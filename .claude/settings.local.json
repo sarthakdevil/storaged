@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:supabase.com)",
+      "WebFetch(domain:www.backblaze.com)",
+      "WebFetch(domain:docs.storj.io)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:storj.dev)",
+      "WebSearch",
+      "WebFetch(domain:help.backblaze.com)",
+      "Bash(npm install *)",
+      "Bash(npx prisma *)"
+    ]
+  }
+}
