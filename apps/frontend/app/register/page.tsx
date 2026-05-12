@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { HardDrive, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Button } from "@repo/ui/button";
 import { useAuth } from "../../components/AuthContext";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -146,30 +147,33 @@ export default function RegisterPage() {
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-              <div className="password-strength">
-                <div className="strength-header">
-                  <span>Password strength</span>
-                  <strong className={strength.className}>
-                    {password.length > 0 ? strength.label : "Empty"}
-                  </strong>
-                </div>
-                <div className="strength-track" aria-hidden="true">
-                  <span
-                    className={`strength-fill ${strength.className}`}
-                    style={{ width: password.length > 0 ? strength.width : "0%" }}
-                  />
-                </div>
-                <div className="password-rules">
-                  {passwordChecks.map((check) => (
+              {password.length > 0 && (
+                <div className="password-strength">
+                  <div className="strength-header">
+                    <span>Password strength</span>
+                    <div className="strength-score">
+                      <strong className={strength.className}>{strength.label}</strong>
+                      <span>{passwordScore}/5 points</span>
+                    </div>
+                  </div>
+                  <div className="strength-track" aria-hidden="true">
                     <span
-                      key={check.label}
-                      className={check.passed ? "password-rule-passed" : ""}
-                    >
-                      {check.label}
-                    </span>
-                  ))}
+                      className={`strength-fill ${strength.className}`}
+                      style={{ width: strength.width }}
+                    />
+                  </div>
+                  <div className="password-rules">
+                    {passwordChecks.map((check) => (
+                      <span
+                        key={check.label}
+                        className={check.passed ? "password-rule-passed" : ""}
+                      >
+                        {check.label}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="auth-field">
@@ -203,10 +207,10 @@ export default function RegisterPage() {
               )}
             </div>
 
-            <button type="submit" disabled={loading} className="auth-submit">
+            <Button type="submit" disabled={loading} variant="primary" size="md">
               {loading && <Loader2 size={16} className="animate-spin" />}
               {loading ? "Creating account..." : "Create account"}
-            </button>
+            </Button>
           </form>
 
           <p className="auth-footer">

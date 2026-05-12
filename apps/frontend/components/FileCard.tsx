@@ -10,6 +10,7 @@ import {
   FileArchive,
   FileText,
   Download,
+  Eye,
   Pencil,
   Trash2,
   Star,
@@ -61,11 +62,12 @@ type Props = {
   node: DriveNode;
   onOpen: (node: DriveNode) => void;
   onDownload: (id: string) => void;
+  onPreview?: (node: DriveNode) => void;
   onEdit: (node: DriveNode) => void;
   onTrash: (id: string) => void;
 };
 
-export function FileCard({ node, onOpen, onDownload, onEdit, onTrash }: Props) {
+export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const Icon = getIcon(node);
@@ -82,7 +84,7 @@ export function FileCard({ node, onOpen, onDownload, onEdit, onTrash }: Props) {
 
   return (
     <div
-      className="group relative bg-white rounded-2xl border border-slate-200 p-4 cursor-pointer hover:shadow-md hover:border-indigo-200 transition-all duration-150 select-none"
+      className="group relative drive-card rounded-3xl p-6 cursor-pointer transition-all duration-200 select-none min-h-[220px] flex flex-col"
       onClick={() => onOpen(node)}
     >
       {/* Favorite badge */}
@@ -106,6 +108,18 @@ export function FileCard({ node, onOpen, onDownload, onEdit, onTrash }: Props) {
 
         {menuOpen && (
           <div className="absolute right-0 top-8 w-44 bg-white border border-slate-200 rounded-xl shadow-xl py-1 text-sm">
+            {node.type === "FILE" && (
+              <button
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onPreview?.(node);
+                }}
+              >
+                <Eye size={14} className="text-slate-400" /> Preview
+              </button>
+            )}
             {node.type === "FILE" && (
               <button
                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50"
@@ -144,17 +158,16 @@ export function FileCard({ node, onOpen, onDownload, onEdit, onTrash }: Props) {
       </div>
 
       {/* Icon */}
-      <div className={`w-12 h-12 ${bg} rounded-xl flex items-center justify-center mb-3.5`}>
-        <Icon size={24} color={color} />
+      <div className={`h-[48%] w-full ${bg} rounded-2xl flex items-center justify-center mb-3 shadow-sm`}>
+        <Icon size={36} color={color} />
       </div>
 
       {/* Name */}
-      <p className="text-sm font-semibold text-slate-900 truncate mb-0.5">{node.name}</p>
+      <p className="text-sm font-semibold text-slate-900 truncate mb-1">{node.name}</p>
 
       {/* Meta */}
-      <p className="text-xs text-slate-400">
-        {node.type === "FILE" ? formatSize(node.sizeBytes) : "Folder"} ·{" "}
-        {formatDate(node.updatedAt)}
+      <p className="text-[11px] text-slate-500">
+        {node.type === "FILE" ? formatSize(node.sizeBytes) : "Folder"} - {formatDate(node.updatedAt)}
       </p>
 
       {/* Tags */}
@@ -163,7 +176,7 @@ export function FileCard({ node, onOpen, onDownload, onEdit, onTrash }: Props) {
           {node.tags.slice(0, 2).map((tag) => (
             <span
               key={tag.id}
-              className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium"
+              className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium"
             >
               {tag.name}
             </span>

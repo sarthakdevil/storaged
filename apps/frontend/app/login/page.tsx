@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { HardDrive, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Button } from "@repo/ui/button";
 import { useAuth } from "../../components/AuthContext";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -97,10 +98,10 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <button type="submit" disabled={loading} className="auth-submit">
+            <Button type="submit" disabled={loading} variant="primary" size="md">
               {loading && <Loader2 size={16} className="animate-spin" />}
               {loading ? "Signing in..." : "Sign in"}
-            </button>
+            </Button>
           </form>
 
           <p className="auth-footer">

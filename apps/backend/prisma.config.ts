@@ -9,6 +9,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Prisma no longer supports `directUrl` in schema files —
+    // prefer setting it here when needed (e.g. bypassing a pooler).
+    url: process.env["DIRECT_URL"],
   },
 });

@@ -1,4 +1,9 @@
-import { DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  S3ServiceException,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Prisma } from "../generated/prisma/client";
@@ -27,6 +32,14 @@ type StorageConnectionConfig = {
   forcePathStyle: boolean;
   projectRef?: string;
   accountId?: string;
+  quotaGb?: number;
+};
+
+type StorageHealthStatus = "connected" | "limited" | "error" | "inactive";
+
+type StorageListOptions = {
+  limit?: number;
+  cursor?: string;
 };
 
 class StorageError extends Error {
@@ -41,9 +54,32 @@ class StorageError extends Error {
 
 const normalizeName = (value: string) => value.trim().toLowerCase() as StorageProvider;
 
+const getProviderLabel = (provider: StorageProvider) => {
+  switch (provider) {
+    case "s3":
+      return "AWS S3";
+    case "supabase":
+      return "Supabase Storage";
+    case "backblaze":
+      return "Backblaze B2";
+    case "storj":
+      return "Storj";
+    case "cloudflare-r2":
+      return "Cloudflare R2";
+    default:
+      return provider;
+  }
+};
+
 const validateEndpointUrl = (endpointUrl: string) => {
   try {
-    return new URL(endpointUrl).toString();
+    const u = new URL(endpointUrl);
+    // Normalize to remove a trailing slash after the host or path while
+    // preserving any meaningful path, query, or hash. This avoids
+    // environments where `URL.toString()` may add an unwanted trailing slash.
+    const pathname = u.pathname.replace(/\/$/, "");
+    const normalized = u.origin + (pathname === "" ? "" : pathname) + (u.search || "") + (u.hash || "");
+    return normalized;
   } catch {
     throw new StorageError("Provide a valid endpoint URL.", 400);
   }
@@ -54,6 +90,14 @@ const getProviderDefaults = (
   input: StorageConnectionInput,
 ): ProviderDefaults => {
   switch (provider) {
+    case "s3": {
+      return {
+        endpointUrl:
+          input.endpointUrl?.trim() ?? `https://s3.${input.region}.amazonaws.com`,
+        region: input.region!,
+        forcePathStyle: input.forcePathStyle ?? false,
+      };
+    }
     case "supabase": {
       return {
         endpointUrl:
@@ -129,6 +173,8 @@ const buildConnectionConfig = (
   input: StorageConnectionInput,
 ): StorageConnectionConfig => {
   const defaults = getProviderDefaults(input.provider, input);
+  const forcePathStyle =
+    input.provider === "s3" ? input.forcePathStyle ?? defaults.forcePathStyle : defaults.forcePathStyle;
 
   return {
     provider: input.provider,
@@ -136,9 +182,10 @@ const buildConnectionConfig = (
     region: defaults.region,
     accessKeyId: input.accessKeyId.trim(),
     secretAccessKey: input.secretAccessKey.trim(),
-    forcePathStyle: input.forcePathStyle ?? defaults.forcePathStyle,
+    forcePathStyle,
     projectRef: input.projectRef?.trim() || undefined,
     accountId: input.accountId?.trim() || undefined,
+    quotaGb: input.quotaGb || undefined,
   };
 };
 
@@ -167,6 +214,92 @@ const sanitizeBucketConnection = (bucket: {
   };
 };
 
+const normalizeStorageListOptions = ({ limit, cursor }: StorageListOptions = {}) => ({
+  limit: Math.min(Math.max(limit ?? 10, 1), 50),
+  cursor: cursor?.trim() || undefined,
+});
+
+const getBucketHealth = async (bucket: {
+  providerName: string;
+  bucketName: string;
+  config: Prisma.JsonValue;
+  isActive: boolean;
+}) => {
+  let status: StorageHealthStatus = bucket.isActive ? "connected" : "inactive";
+  let statusMessage = bucket.isActive ? "Bucket is reachable." : "Bucket is inactive.";
+
+  if (!bucket.isActive) {
+    return { status, statusMessage };
+  }
+
+  const bucketNameError = validateStoredBucketName(bucket.providerName, bucket.bucketName);
+
+  if (bucketNameError) {
+    return {
+      status: "error" as const,
+      statusMessage: bucketNameError,
+    };
+  }
+
+  try {
+    await createS3Client(getBucketConfig(bucket.config)).send(
+      new HeadBucketCommand({ Bucket: bucket.bucketName }),
+    );
+  } catch (error) {
+    const healthFailure = describeBucketHealthFailure(error);
+    status = healthFailure.status;
+    statusMessage = healthFailure.statusMessage;
+  }
+
+  return { status, statusMessage };
+};
+
+const buildStorageConnectionView = async (bucket: {
+  id: string;
+  providerName: string;
+  displayName: string | null;
+  bucketName: string;
+  config: Prisma.JsonValue;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  fileObjects?: { node?: { sizeBytes: bigint; isDeleted: boolean } | null }[];
+}) => {
+  const health = await getBucketHealth(bucket);
+
+  const fileObjects = bucket.fileObjects ?? [];
+  const usedBytes = fileObjects.reduce(
+    (sum, fileObject) =>
+      fileObject.node && !fileObject.node.isDeleted ? sum + fileObject.node.sizeBytes : sum,
+    0n,
+  );
+  const totalObjects = fileObjects.length;
+  const activeObjects = fileObjects.filter((fileObject) => !fileObject.node?.isDeleted).length;
+
+  const bucketConfig = getBucketConfig(bucket.config);
+  const quotaBigInt = bucketConfig.quotaGb
+    ? BigInt(Math.round(bucketConfig.quotaGb * 1024 * 1024 * 1024))
+    : null;
+  const availableBigInt =
+    quotaBigInt !== null ? (quotaBigInt > usedBytes ? quotaBigInt - usedBytes : 0n) : null;
+
+  const providerLabel = bucket.displayName?.trim() || getProviderLabel(bucket.providerName as StorageProvider);
+
+  return {
+    ...sanitizeBucketConnection(bucket),
+    providerLabel,
+    ...health,
+    usedBytes: usedBytes.toString(),
+    totalObjects,
+    activeObjects,
+    totalBytes: quotaBigInt?.toString() ?? null,
+    quotaBytes: quotaBigInt?.toString() ?? null,
+    availableBytes: availableBigInt?.toString() ?? null,
+    sizeEstimateSource: "database",
+    lastCheckedAt: new Date().toISOString(),
+  };
+};
+
 export const createStorageConnection = async (rawInput: unknown) => {
   const input = parseStorageConnectionInput(rawInput);
   const config = buildConnectionConfig(input);
@@ -184,26 +317,62 @@ export const createStorageConnection = async (rawInput: unknown) => {
   return sanitizeBucketConnection(connection);
 };
 
-export const listStorageConnections = async () => {
+export const listStorageConnections = async (options?: StorageListOptions) => {
+  const { limit, cursor } = normalizeStorageListOptions(options);
   const connections = await prisma.bucket.findMany({
+    take: limit + 1,
+    ...(cursor && {
+      cursor: { id: cursor },
+      skip: 1,
+    }),
     orderBy: {
       createdAt: "desc",
     },
+    include: {
+      fileObjects: {
+        include: {
+          node: {
+            select: {
+              sizeBytes: true,
+              isDeleted: true,
+            },
+          },
+        },
+      },
+    },
   });
 
-  return connections.map(sanitizeBucketConnection);
+  const page = connections.slice(0, limit);
+  const items = await Promise.all(page.map(buildStorageConnectionView));
+
+  return {
+    items,
+    nextCursor: connections.length > limit ? connections[limit].id : null,
+  };
 };
 
 export const getStorageConnection = async (id: string) => {
   const connection = await prisma.bucket.findUnique({
     where: { id },
+    include: {
+      fileObjects: {
+        include: {
+          node: {
+            select: {
+              sizeBytes: true,
+              isDeleted: true,
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!connection) {
     throw new StorageError("Storage connection not found.", 404);
   }
 
-  return sanitizeBucketConnection(connection);
+  return await buildStorageConnectionView(connection as any);
 };
 
 export const updateStorageConnection = async ({ id, input: rawInput }: StorageConnectionUpdateInput) => {
@@ -297,6 +466,7 @@ type BucketConfig = {
   accessKeyId: string;
   secretAccessKey: string;
   forcePathStyle: boolean;
+  quotaGb?: number;
 };
 
 const getBucketConfig = (config: Prisma.JsonValue): BucketConfig => {
@@ -307,7 +477,85 @@ const getBucketConfig = (config: Prisma.JsonValue): BucketConfig => {
     accessKeyId: c.accessKeyId as string,
     secretAccessKey: c.secretAccessKey as string,
     forcePathStyle: c.forcePathStyle as boolean,
+    quotaGb: typeof c.quotaGb === "number" ? c.quotaGb : undefined,
   };
+};
+
+const getS3ErrorCode = (error: unknown) => {
+  if (error instanceof S3ServiceException) {
+    return error.name;
+  }
+
+  if (error && typeof error === "object" && "name" in error) {
+    const name = (error as { name?: unknown }).name;
+    return typeof name === "string" ? name : undefined;
+  }
+
+  return undefined;
+};
+
+const describeBucketHealthFailure = (error: unknown) => {
+  const code = getS3ErrorCode(error);
+  const message = error instanceof Error ? error.message : "Could not reach this bucket.";
+  const metadata =
+    error instanceof S3ServiceException
+      ? [
+          error.$metadata.httpStatusCode && `HTTP ${error.$metadata.httpStatusCode}`,
+          error.$metadata.requestId && `request ${error.$metadata.requestId}`,
+          error.$metadata.extendedRequestId && `extended ${error.$metadata.extendedRequestId}`,
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : "";
+  const fullMessage = [code, message, metadata].filter(Boolean).join(": ");
+
+  if (code === "AccessDenied" || code === "Forbidden" || code === "NotAuthorized") {
+    return {
+      status: "limited" as const,
+      statusMessage:
+        "Credentials are saved, but this key cannot run the bucket health check. Upload may still work if PutObject is allowed.",
+    };
+  }
+
+  if (code === "NoSuchBucket") {
+    return {
+      status: "error" as const,
+      statusMessage: "Bucket was not found. Check the bucket name.",
+    };
+  }
+
+  if (code === "PermanentRedirect" || code === "AuthorizationHeaderMalformed") {
+    return {
+      status: "error" as const,
+      statusMessage: "Bucket exists in a different region or endpoint. Check region and endpoint URL.",
+    };
+  }
+
+  if (code === "InvalidAccessKeyId" || code === "SignatureDoesNotMatch") {
+    return {
+      status: "error" as const,
+      statusMessage: "Storage credentials were rejected. Check access key and secret key.",
+    };
+  }
+
+  return {
+    status: "error" as const,
+    statusMessage: fullMessage,
+  };
+};
+
+const validateStoredBucketName = (providerName: string, bucketName: string) => {
+  const commonPattern = /^[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]$/;
+  const storjPattern = /^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$/;
+  const pattern = providerName === "storj" ? storjPattern : commonPattern;
+
+  if (!pattern.test(bucketName) || bucketName.includes("..")) {
+    return providerName === "storj"
+      ? "Invalid Storj bucket name. Use only lowercase letters, numbers, and hyphens."
+      : "Invalid bucket name. Use lowercase letters, numbers, dots, or hyphens.";
+  }
+
+  return null;
 };
 
 const selectLeastUsedBucket = async () => {
@@ -432,14 +680,21 @@ export const uploadFile = async ({
     });
 
     return {
-      nodeId: result.node.id,
+      id: result.node.id,
+      driveId: result.node.driveId,
+      parentId: result.node.parentId,
+      type: result.node.type,
       name: result.node.name,
       path: result.node.path,
+      description: result.node.description,
       sizeBytes: result.node.sizeBytes.toString(),
       mimeType: result.node.mimeType,
+      isFavorite: result.node.isFavorite,
+      tags: [],
       bucketId: bucket.id,
       objectKey: result.fileObject.objectKey,
       createdAt: result.node.createdAt,
+      updatedAt: result.node.updatedAt,
     };
   } catch (err) {
     // Best-effort S3 cleanup if DB transaction fails
@@ -448,6 +703,87 @@ export const uploadFile = async ({
       .catch(() => undefined);
     throw err;
   }
+};
+
+// ─── Create folder ───────────────────────────────────────────────────────────
+
+export const createFolder = async ({
+  userId,
+  name,
+  driveId,
+  parentId,
+}: {
+  userId: string;
+  name: string;
+  driveId?: string;
+  parentId?: string;
+}) => {
+  const drive = await prisma.drive.findFirst({
+    where: driveId ? { id: driveId, ownerId: userId } : { ownerId: userId },
+  });
+
+  if (!drive) {
+    throw new StorageError("Drive not found.", 404);
+  }
+
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new StorageError("Folder name is required.", 400);
+  }
+
+  const safeName = trimmed.replace(/[^ -\u007f]/g, "").replace(/[^\w.\-]/g, "_");
+  if (!safeName) {
+    throw new StorageError("Folder name is invalid.", 400);
+  }
+
+  let parentPath = "";
+  if (parentId) {
+    const parentNode = await prisma.node.findFirst({
+      where: { id: parentId, driveId: drive.id, type: "FOLDER", isDeleted: false },
+      select: { path: true },
+    });
+    if (!parentNode) {
+      throw new StorageError("Parent folder not found.", 404);
+    }
+    parentPath = parentNode.path;
+  }
+
+  const folderPath = `${parentPath}/${safeName}`;
+
+  const existing = await prisma.node.findUnique({
+    where: { driveId_path: { driveId: drive.id, path: folderPath } },
+  });
+
+  if (existing && !existing.isDeleted) {
+    throw new StorageError("A folder already exists at this path.", 409);
+  }
+
+  const node = await prisma.node.create({
+    data: {
+      driveId: drive.id,
+      parentId: parentId ?? null,
+      type: "FOLDER",
+      name: safeName,
+      path: folderPath,
+      createdById: userId,
+    },
+  });
+
+  return {
+    id: node.id,
+    driveId: node.driveId,
+    parentId: node.parentId,
+    type: node.type,
+    name: node.name,
+    path: node.path,
+    description: node.description,
+    sizeBytes: node.sizeBytes.toString(),
+    mimeType: node.mimeType,
+    isFavorite: node.isFavorite,
+    tags: [],
+    createdAt: node.createdAt,
+    updatedAt: node.updatedAt,
+  };
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -778,6 +1114,40 @@ export const downloadFile = async ({
   return { url, expiresIn, name: node.name, mimeType: node.mimeType, sizeBytes: node.sizeBytes.toString() };
 };
 
+// ─── Preview (presigned URL, inline) ────────────────────────────────────────
+
+export const previewFile = async ({
+  userId,
+  nodeId,
+  expiresIn = 900,
+}: {
+  userId: string;
+  nodeId: string;
+  expiresIn?: number;
+}) => {
+  const node = await prisma.node.findFirst({
+    where: { id: nodeId, type: "FILE", isDeleted: false, drive: { ownerId: userId } },
+    include: { fileObjects: { include: { bucket: true } } },
+  });
+
+  if (!node) throw new StorageError("File not found.", 404);
+
+  const fo = node.fileObjects[0];
+  if (!fo) throw new StorageError("File data not found.", 404);
+
+  const s3Client = createS3Client(getBucketConfig(fo.bucket.config));
+  const command = new GetObjectCommand({
+    Bucket: fo.bucket.bucketName,
+    Key: fo.objectKey,
+    ResponseContentDisposition: `inline; filename="${node.name}"`,
+    ResponseContentType: node.mimeType ?? "application/octet-stream",
+  });
+
+  const url = await getSignedUrl(s3Client, command, { expiresIn });
+
+  return { url, expiresIn, name: node.name, mimeType: node.mimeType, sizeBytes: node.sizeBytes.toString() };
+};
+
 // ─── Update node details ──────────────────────────────────────────────────────
 
 export const updateNodeDetails = async ({
@@ -878,5 +1248,129 @@ export const updateNodeDetails = async ({
     mimeType: updated.mimeType,
     tags: updated.tags.map((nt) => nt.tag),
     updatedAt: updated.updatedAt,
+  };
+};
+
+export const getStorageDashboard = async (options?: StorageListOptions) => {
+  const { limit, cursor } = normalizeStorageListOptions(options);
+  const buckets = await prisma.bucket.findMany({
+    orderBy: {
+      createdAt: "desc",
+    },
+    include: {
+      fileObjects: {
+        include: {
+          node: {
+            select: {
+              sizeBytes: true,
+              isDeleted: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const pagedBuckets = cursor
+    ? buckets.slice(buckets.findIndex((bucket) => bucket.id === cursor) + 1)
+    : buckets;
+  const page = pagedBuckets.slice(0, limit);
+  const nextCursor = pagedBuckets.length > limit ? pagedBuckets[limit].id : null;
+
+  const storages = await Promise.all(
+    page.map(async (bucket) => {
+      const usedBytes = bucket.fileObjects.reduce(
+        (sum, fileObject) =>
+          fileObject.node && !fileObject.node.isDeleted
+            ? sum + fileObject.node.sizeBytes
+            : sum,
+        0n,
+      );
+      const totalObjects = bucket.fileObjects.length;
+      const activeObjects = bucket.fileObjects.filter((fileObject) => !fileObject.node?.isDeleted)
+        .length;
+
+      const health = await getBucketHealth(bucket);
+      const bConfig = getBucketConfig(bucket.config);
+      const quotaBigInt = bConfig.quotaGb
+        ? BigInt(Math.round(bConfig.quotaGb * 1024 * 1024 * 1024))
+        : null;
+      const availableBigInt =
+        quotaBigInt !== null ? (quotaBigInt > usedBytes ? quotaBigInt - usedBytes : 0n) : null;
+
+      const providerLabel = bucket.displayName?.trim() || getProviderLabel(bucket.providerName as StorageProvider);
+
+      return {
+        id: bucket.id,
+        providerName: bucket.providerName,
+        providerLabel,
+        displayName: bucket.displayName,
+        bucketName: bucket.bucketName,
+        config: sanitizeBucketConnection(bucket).config,
+        isActive: bucket.isActive,
+        status: health.status,
+        statusMessage: health.statusMessage,
+        usedBytes: usedBytes.toString(),
+        totalBytes: quotaBigInt?.toString() ?? null,
+        quotaBytes: quotaBigInt?.toString() ?? null,
+        availableBytes: availableBigInt?.toString() ?? null,
+        activeObjects,
+        totalObjects,
+        sizeEstimateSource: "database",
+        lastCheckedAt: new Date().toISOString(),
+        createdAt: bucket.createdAt,
+        updatedAt: bucket.updatedAt,
+      };
+    }),
+  );
+
+  const allSummaries = buckets.map((bucket) => {
+    const usedBytes = bucket.fileObjects.reduce(
+      (sum, fileObject) =>
+        fileObject.node && !fileObject.node.isDeleted
+          ? sum + fileObject.node.sizeBytes
+          : sum,
+      0n,
+    );
+    const sConfig = getBucketConfig(bucket.config);
+    const quotaBigInt = sConfig.quotaGb
+      ? BigInt(Math.round(sConfig.quotaGb * 1024 * 1024 * 1024))
+      : null;
+    return {
+      isActive: bucket.isActive,
+      usedBytes,
+      quotaBigInt,
+      activeObjects: bucket.fileObjects.filter((fileObject) => !fileObject.node?.isDeleted).length,
+      totalObjects: bucket.fileObjects.length,
+    };
+  });
+  const usedBytes = allSummaries.reduce((sum, storage) => sum + storage.usedBytes, 0n);
+  const hasAnyQuota = allSummaries.some((s) => s.quotaBigInt !== null);
+  const totalQuotaBigInt = hasAnyQuota
+    ? allSummaries.reduce((sum, s) => sum + (s.quotaBigInt ?? 0n), 0n)
+    : null;
+  const totalAvailableBigInt =
+    totalQuotaBigInt !== null
+      ? totalQuotaBigInt > usedBytes
+        ? totalQuotaBigInt - usedBytes
+        : 0n
+      : null;
+
+  return {
+    totalStorages: buckets.length,
+    activeStorages: allSummaries.filter((storage) => storage.isActive).length,
+    connectedStorages: storages.filter(
+      (storage) => storage.status === "connected" || storage.status === "limited",
+    ).length,
+    erroredStorages: storages.filter((storage) => storage.status === "error").length,
+    usedBytes: usedBytes.toString(),
+    totalBytes: totalQuotaBigInt?.toString() ?? null,
+    quotaBytes: totalQuotaBigInt?.toString() ?? null,
+    availableBytes: totalAvailableBigInt?.toString() ?? null,
+    totalObjects: allSummaries.reduce((sum, storage) => sum + storage.totalObjects, 0),
+    activeObjects: allSummaries.reduce((sum, storage) => sum + storage.activeObjects, 0),
+    totalConnections: buckets.length,
+    nextCursor,
+    storages,
   };
 };

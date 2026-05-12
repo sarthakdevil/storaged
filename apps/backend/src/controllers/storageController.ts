@@ -2,10 +2,13 @@ import multer from "multer";
 import { Request, Response } from "express";
 import {
   createStorageConnection,
+  createFolder,
   deleteNode,
   deleteStorageConnection,
   downloadFile,
+  previewFile,
   getStorageConnection,
+  getStorageDashboard,
   isStorageError,
   listFiles,
   listStorageConnections,
@@ -20,7 +23,7 @@ import { AuthenticatedRequest } from "../middleware/requireAuth";
 
 export const multerUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+  limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
 });
 
 const getRouteParam = (value: string | string[] | undefined) => {
@@ -29,6 +32,16 @@ const getRouteParam = (value: string | string[] | undefined) => {
   }
 
   return value ?? "";
+};
+
+const getPaginationOptions = (req: Request) => {
+  const limit =
+    typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
+
+  return {
+    limit: Number.isFinite(limit) ? limit : undefined,
+    cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
+  };
 };
 
 const handleStorageError = (error: unknown, res: Response) => {
@@ -50,9 +63,9 @@ export const createConnection = async (req: Request, res: Response) => {
   }
 };
 
-export const listConnections = async (_req: Request, res: Response) => {
+export const listConnections = async (req: Request, res: Response) => {
   try {
-    const result = await listStorageConnections();
+    const result = await listStorageConnections(getPaginationOptions(req));
     res.status(200).json(result);
   } catch (error) {
     handleStorageError(error, res);
@@ -112,6 +125,33 @@ export const uploadFileHandler = async (req: Request, res: Response) => {
       sizeBytes: req.file.size,
       driveId,
       parentId,
+    });
+
+    res.status(201).json(result);
+  } catch (error) {
+    handleStorageError(error, res);
+  }
+};
+
+export const createFolderHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+    const { name, driveId, parentId } = req.body as {
+      name?: string;
+      driveId?: string;
+      parentId?: string;
+    };
+
+    if (!name || typeof name !== "string") {
+      res.status(400).json({ message: "Folder name is required." });
+      return;
+    }
+
+    const result = await createFolder({
+      userId,
+      name,
+      driveId: typeof driveId === "string" ? driveId : undefined,
+      parentId: typeof parentId === "string" ? parentId : undefined,
     });
 
     res.status(201).json(result);
@@ -188,6 +228,22 @@ export const downloadFileHandler = async (req: Request, res: Response) => {
   }
 };
 
+export const previewFileHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+    const expiresIn =
+      typeof req.query.expiresIn === "string" ? parseInt(req.query.expiresIn, 10) : 900;
+    const result = await previewFile({
+      userId,
+      nodeId: getRouteParam(req.params.nodeId),
+      expiresIn: Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 900,
+    });
+    res.status(200).json(result);
+  } catch (error) {
+    handleStorageError(error, res);
+  }
+};
+
 export const updateNodeHandler = async (req: Request, res: Response) => {
   try {
     const { userId } = req as AuthenticatedRequest;
@@ -205,6 +261,15 @@ export const updateNodeHandler = async (req: Request, res: Response) => {
       isFavorite,
       tags: Array.isArray(tags) ? tags : undefined,
     });
+    res.status(200).json(result);
+  } catch (error) {
+    handleStorageError(error, res);
+  }
+};
+
+export const storageDashboard = async (req: Request, res: Response) => {
+  try {
+    const result = await getStorageDashboard(getPaginationOptions(req));
     res.status(200).json(result);
   } catch (error) {
     handleStorageError(error, res);

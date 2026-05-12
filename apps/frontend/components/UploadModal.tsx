@@ -78,17 +78,20 @@ export function UploadModal({ parentId, onClose }: Props) {
     }
 
     setUploading(false);
-    if (successCount > 0) toast(`${successCount} file${successCount > 1 ? "s" : ""} uploaded`);
+    if (successCount > 0) {
+      toast(`${successCount} file${successCount > 1 ? "s" : ""} uploaded`);
+      onClose();
+    }
   }
 
   const pending = queue.filter((q) => q.status === "pending").length;
   const allDone = queue.length > 0 && queue.every((q) => q.status === "done");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <div className="upload-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="upload-modal w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="upload-modal-header flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-900">Upload files</h2>
           <button
             onClick={onClose}
@@ -100,7 +103,7 @@ export function UploadModal({ parentId, onClose }: Props) {
 
         {/* Drop zone */}
         <div
-          className={`mx-6 mt-5 border-2 border-dashed rounded-2xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
+          className={`upload-dropzone mx-6 mt-5 border-2 border-dashed rounded-2xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
             dragging
               ? "border-indigo-400 bg-indigo-50"
               : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
@@ -113,7 +116,7 @@ export function UploadModal({ parentId, onClose }: Props) {
           onDrop={onDrop}
           onClick={() => inputRef.current?.click()}
         >
-          <div className="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center">
+          <div className="upload-dropzone-icon w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center">
             <Upload size={22} className="text-indigo-500" />
           </div>
           <div className="text-center">
@@ -121,7 +124,7 @@ export function UploadModal({ parentId, onClose }: Props) {
               Drop files here or{" "}
               <span className="text-indigo-600 underline underline-offset-2">browse</span>
             </p>
-            <p className="text-xs text-slate-400 mt-0.5">Up to 100 MB per file</p>
+            <p className="text-xs text-slate-400 mt-0.5">Up to 500 MB per file</p>
           </div>
           <input
             ref={inputRef}
@@ -134,9 +137,9 @@ export function UploadModal({ parentId, onClose }: Props) {
 
         {/* Queue */}
         {queue.length > 0 && (
-          <div className="mx-6 mt-4 space-y-2 max-h-52 overflow-y-auto">
+          <div className="upload-queue mx-6 mt-4 space-y-2 max-h-52 overflow-y-auto">
             {queue.map((item, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+              <div key={i} className="upload-queue-row flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
                 <File size={16} className="text-slate-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-800 truncate">{item.file.name}</p>
@@ -165,10 +168,10 @@ export function UploadModal({ parentId, onClose }: Props) {
         )}
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 mt-4 border-t border-slate-100 bg-slate-50">
+        <div className="upload-modal-footer flex gap-3 px-6 py-4 mt-4 border-t border-slate-100 bg-slate-50">
           <button
             onClick={onClose}
-            className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-white transition"
+            className="upload-secondary-button flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-white transition"
           >
             {allDone ? "Close" : "Cancel"}
           </button>
@@ -176,7 +179,7 @@ export function UploadModal({ parentId, onClose }: Props) {
             <button
               onClick={startUpload}
               disabled={pending === 0 || uploading}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-60 text-white text-sm font-semibold transition"
+              className="upload-primary-button flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-60 text-white text-sm font-semibold transition"
             >
               {uploading && <Loader2 size={14} className="animate-spin" />}
               Upload {pending > 0 ? `${pending} file${pending > 1 ? "s" : ""}` : ""}

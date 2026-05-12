@@ -25,7 +25,18 @@ const optionalUrlSchema = z.preprocess(
 );
 
 const commonConnectionSchema = z.object({
-  bucketName: z.string().trim().min(1, "Bucket name is required."),
+  bucketName: z
+    .string()
+    .trim()
+    .min(3, "Bucket name must be at least 3 characters.")
+    .max(63, "Bucket name must be at most 63 characters.")
+    .regex(
+      /^[a-z0-9][a-z0-9.-]*[a-z0-9]$/,
+      "Bucket name must use lowercase letters, numbers, dots, or hyphens, and start/end with a letter or number.",
+    )
+    .refine((value) => !value.includes(".."), {
+      message: "Bucket name cannot contain consecutive dots.",
+    }),
   displayName: optionalTrimmedStringSchema,
   accessKeyId: z.string().trim().min(1, "Access key ID is required."),
   secretAccessKey: z.string().trim().min(1, "Secret access key is required."),
@@ -35,6 +46,7 @@ const commonConnectionSchema = z.object({
   accountId: optionalTrimmedStringSchema,
   forcePathStyle: z.boolean().optional(),
   isActive: z.boolean().optional(),
+  quotaGb: z.number().positive("Quota must be a positive number.").optional(),
 });
 
 const createSupabaseConnectionSchema = () =>
@@ -61,10 +73,20 @@ const createBackblazeConnectionSchema = () =>
   });
 
 const createStorjConnectionSchema = () =>
-  commonConnectionSchema.extend({
-    provider: z.literal("storj"),
-    region: optionalTrimmedStringSchema,
-  });
+  commonConnectionSchema
+    .extend({
+      provider: z.literal("storj"),
+      region: optionalTrimmedStringSchema,
+    })
+    .superRefine((value, context) => {
+      if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(value.bucketName)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Storj bucket names can only contain lowercase letters, numbers, and hyphens.",
+          path: ["bucketName"],
+        });
+      }
+    });
 
 const createCloudflareR2ConnectionSchema = () =>
   commonConnectionSchema
@@ -83,7 +105,14 @@ const createCloudflareR2ConnectionSchema = () =>
       }
     });
 
+const createS3ConnectionSchema = () =>
+  commonConnectionSchema.extend({
+    provider: z.literal("s3"),
+    region: z.string().trim().min(1, "S3 connections need a region."),
+  });
+
 export const storageConnectionSchemas = {
+  s3: createS3ConnectionSchema(),
   supabase: createSupabaseConnectionSchema(),
   backblaze: createBackblazeConnectionSchema(),
   storj: createStorjConnectionSchema(),

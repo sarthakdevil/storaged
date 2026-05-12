@@ -65,7 +65,7 @@ export default function TrashPage() {
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
             <Loader2 size={32} className="animate-spin text-indigo-400" />
-            <p className="text-sm text-slate-400">Loading trash…</p>
+            <p className="text-sm text-slate-400">Loading trash...</p>
           </div>
         ) : isError ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
@@ -114,7 +114,7 @@ export default function TrashPage() {
                   </p>
                   <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
                     {node.type === "FILE" && <span>{formatSize(node.sizeBytes)}</span>}
-                    {node.type === "FILE" && <span>·</span>}
+                    {node.type === "FILE" && <span>-</span>}
                     {node.originalPath && (
                       <span className="truncate max-w-xs" title={node.originalPath}>
                         {node.originalPath}
@@ -122,7 +122,7 @@ export default function TrashPage() {
                     )}
                     {node.deletedAt && (
                       <>
-                        <span>·</span>
+                        <span>-</span>
                         <span>Deleted {formatDate(node.deletedAt)}</span>
                       </>
                     )}

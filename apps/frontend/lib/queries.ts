@@ -1,14 +1,74 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { api, DriveNode, TrashNode } from "./api";
+import {
+  api,
+  DriveNode,
+  StorageConnection,
+  StorageConnectionInput,
+  StorageDashboard,
+  TrashNode,
+} from "./api";
 import { useAuth } from "../components/AuthContext";
 import { useToast } from "../components/Toast";
+
+const PROVIDER_DEFAULT_QUOTA_GB: Record<string, number> = {
+  "s3": 5,
+  "cloudflare-r2": 10,
+  "backblaze": 10,
+  "supabase": 1,
+  "storj": 25,
+};
+
+const gbToBytes = (gb: number) => BigInt(Math.round(gb * 1024 * 1024 * 1024));
+
+function applyDefaultQuota(conn: any) {
+  const originalQuota = conn.quotaBytes;
+
+  if (conn.quotaBytes === null || conn.quotaBytes === undefined) {
+    const gb = PROVIDER_DEFAULT_QUOTA_GB[conn.providerName] ?? null;
+    if (gb !== null) {
+      const quota = gbToBytes(gb);
+      conn.quotaBytes = quota.toString();
+      try {
+        const used = BigInt(conn.usedBytes ?? "0");
+        const avail = quota > used ? (quota - used).toString() : "0";
+        conn.availableBytes = avail;
+      } catch (e) {
+        conn.availableBytes = null;
+      }
+    }
+  } else {
+    // If quota provided as number/string, normalize to string
+    conn.quotaBytes = conn.quotaBytes !== null ? String(conn.quotaBytes) : conn.quotaBytes;
+    if ((conn.availableBytes === null || conn.availableBytes === undefined) && conn.quotaBytes) {
+      try {
+        const quota = BigInt(conn.quotaBytes);
+        const used = BigInt(conn.usedBytes ?? "0");
+        conn.availableBytes = quota > used ? (quota - used).toString() : "0";
+      } catch (e) {
+        conn.availableBytes = null;
+      }
+    }
+  }
+
+  // Mark where the quota came from so UI can show a legend
+  if (originalQuota === null || originalQuota === undefined) {
+    if (conn.quotaBytes) conn.quotaSource = "provider-default";
+    else conn.quotaSource = "unknown";
+  } else {
+    conn.quotaSource = "provider-reported";
+  }
+
+  return conn;
+}
 
 export const keys = {
   nodes: ["nodes"] as const,
   trash: ["trash"] as const,
+  storageConnections: ["storage-connections"] as const,
+  storageDashboard: ["storage-dashboard"] as const,
 };
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -43,6 +103,44 @@ export function useTrash() {
         throw err;
       }
     },
+    enabled: !!token,
+  });
+}
+
+export function useStorageConnections() {
+  const { token } = useAuth();
+  return useInfiniteQuery({
+    queryKey: keys.storageConnections,
+    queryFn: async ({ pageParam }) => {
+      const res = await api.get<{ items: StorageConnection[]; nextCursor: string | null }>(
+        `/storage/connections?limit=10${pageParam ? `&cursor=${pageParam}` : ""}`,
+      );
+      return {
+        items: res.items.map((it) => applyDefaultQuota(it)),
+        nextCursor: res.nextCursor,
+      };
+    },
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: !!token,
+  });
+}
+
+export function useStorageDashboard() {
+  const { token } = useAuth();
+  return useInfiniteQuery({
+    queryKey: keys.storageDashboard,
+    queryFn: async ({ pageParam }) => {
+      const res = await api.get<StorageDashboard>(
+        `/storage/dashboard?limit=10${pageParam ? `&cursor=${pageParam}` : ""}`,
+      );
+      return {
+        ...res,
+        storages: res.storages.map((s) => applyDefaultQuota(s)),
+      };
+    },
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !!token,
   });
 }
@@ -152,6 +250,83 @@ export function useUploadFile() {
         if (prev.some((n) => n.id === node.id)) return prev;
         return [node, ...prev];
       });
+      qc.invalidateQueries({ queryKey: keys.storageDashboard });
+    },
+  });
+}
+
+export function useCreateFolder() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: ({ name, parentId }: { name: string; parentId?: string | null }) =>
+      api.post<DriveNode>("/files/folders", {
+        name,
+        parentId: parentId ?? undefined,
+      }),
+    onSuccess: (created) => {
+      qc.setQueryData<DriveNode[]>(keys.nodes, (prev) => {
+        const next = [...(prev ?? []), created];
+        return next.sort((a, b) => {
+          if (a.type !== b.type) return a.type === "FOLDER" ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+      });
+      toast("Folder created");
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Folder creation failed", "error");
+    },
+  });
+}
+
+export function useCreateStorageConnection() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (body: StorageConnectionInput) =>
+      api.post<StorageConnection>("/storage/connections", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.storageConnections });
+      qc.invalidateQueries({ queryKey: keys.storageDashboard });
+      toast("Storage connected");
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Could not connect storage", "error");
+    },
+  });
+}
+
+export function useDeleteStorageConnection() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (id: string) => api.del(`/storage/connections/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.storageConnections });
+      qc.invalidateQueries({ queryKey: keys.storageDashboard });
+      toast("Storage connection removed");
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Could not remove storage", "error");
+    },
+  });
+}
+
+export function useUpdateStorageConnection() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: string } & Partial<StorageConnectionInput>) =>
+      api.patch<StorageConnection>(`/storage/connections/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.storageConnections });
+      qc.invalidateQueries({ queryKey: keys.storageDashboard });
+      toast("Storage connection updated");
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Could not update storage", "error");
     },
   });
 }
