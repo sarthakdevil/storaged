@@ -79,6 +79,7 @@ export function PreviewModal({ node, onClose }: Props) {
   if (!node) return null;
 
   async function handleDownload() {
+    if (!node) return;
     try {
       const res = await api.get<{ url: string }>(`/files/${node.id}/download`);
       window.open(res.url, "_blank");
