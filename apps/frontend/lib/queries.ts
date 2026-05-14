@@ -169,6 +169,7 @@ export function useRestoreNode() {
     mutationFn: (id: string) => api.post(`/files/${id}/restore`),
     onSuccess: (_, id) => {
       qc.setQueryData<TrashNode[]>(keys.trash, (prev) => prev?.filter((n) => n.id !== id) ?? []);
+      qc.invalidateQueries({ queryKey: keys.nodes });
       toast("Item restored to your drive");
     },
     onError: (err) => {

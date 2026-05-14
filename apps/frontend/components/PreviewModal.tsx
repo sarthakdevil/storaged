@@ -89,9 +89,9 @@ export function PreviewModal({ node, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+    <div className="fixed top-18 left-68 right-0 bottom-0 z-50 p-6 bg-slate-950/20 backdrop-blur-2xl">
+      <div className="flex h-full w-full flex-col overflow-hidden rounded-xl bg-white shadow-[0_28px_70px_rgba(15,23,42,0.24)] ring-1 ring-slate-200/80">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur-md shrink-0">
           <div>
             <h2 className="text-base font-semibold text-slate-900 truncate">Preview</h2>
             <p className="text-xs text-slate-500">
@@ -125,9 +125,9 @@ export function PreviewModal({ node, onClose }: Props) {
           </div>
         </div>
 
-        <div className="px-6 py-5 bg-slate-50">
+        <div className="flex-1 min-h-0 p-6 bg-slate-50/95 backdrop-blur-sm">
           {loading ? (
-            <div className="flex items-center justify-center h-64 text-slate-500">
+            <div className="flex h-full items-center justify-center text-slate-500">
               <Loader2 size={20} className="animate-spin" />
               <span className="ml-2 text-sm">Loading preview...</span>
             </div>
@@ -139,18 +139,18 @@ export function PreviewModal({ node, onClose }: Props) {
             <iframe
               title="PDF Preview"
               src={previewUrl}
-              className="w-full h-[60vh] rounded-xl border border-slate-200 bg-white"
+              className="w-full h-full rounded-xl border border-slate-200 bg-white"
             />
           ) : isImage && previewUrl ? (
-            <div className="flex items-center justify-center">
+            <div className="flex h-full items-center justify-center overflow-auto">
               <img
                 src={previewUrl}
                 alt={node.name}
-                className="max-h-[60vh] rounded-xl border border-slate-200"
+                className="max-h-full max-w-full rounded-xl border border-slate-200 object-contain"
               />
             </div>
           ) : (isMarkdown || isText) && content ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-5 max-h-[60vh] overflow-auto text-sm text-slate-700">
+            <div className="h-full overflow-auto rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-700">
               {isMarkdown ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
               ) : (

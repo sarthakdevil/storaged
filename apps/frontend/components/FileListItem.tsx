@@ -11,7 +11,7 @@ type Props = {
   onDownload: (id: string) => void;
   onPreview?: (node: DriveNode) => void;
   onEdit: (node: DriveNode) => void;
-  onTrash: (id: string) => void;
+  onTrash: (node: DriveNode) => void;
 };
 
 function getIcon(node: DriveNode) {
@@ -23,9 +23,11 @@ function getIcon(node: DriveNode) {
 
 export function FileListItem({ node, onOpen, onDownload, onPreview, onEdit, onTrash }: Props) {
   const Icon = getIcon(node);
+  const isFile = node.type === "FILE";
+
   return (
     <div
-      className="flex items-center gap-6 px-6 py-4 bg-white border border-slate-200 rounded-2xl hover:shadow-sm transition cursor-pointer min-h-[88px]"
+      className="flex items-center gap-6 px-6 py-4 bg-white border border-slate-200 rounded-2xl hover:shadow-sm transition cursor-pointer min-h-22 overflow-visible"
       onClick={() => onOpen(node)}
     >
       <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center shrink-0">
@@ -43,53 +45,81 @@ export function FileListItem({ node, onOpen, onDownload, onPreview, onEdit, onTr
       </div>
 
       <div className="flex items-center gap-2 shrink-0 pr-1">
-        {node.type === "FILE" && (
+        {isFile && (
+          <TooltipButton label="Preview file">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview?.(node);
+              }}
+              className="file-row-action-button"
+              aria-label="Preview"
+            >
+              <Eye size={16} className="text-slate-500" />
+            </button>
+          </TooltipButton>
+        )}
+
+        {isFile && (
+          <TooltipButton label="Download file">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDownload(node.id);
+              }}
+              className="file-row-action-button"
+              aria-label="Download"
+            >
+              <Download size={16} className="text-slate-500" />
+            </button>
+          </TooltipButton>
+        )}
+
+        <TooltipButton label={isFile ? "Edit details" : "Rename folder"}>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onPreview?.(node);
+              onEdit(node);
             }}
-            className="p-2.5 rounded-lg hover:bg-slate-50"
-            aria-label="Preview"
+            className="file-row-action-button"
+            aria-label="Edit"
           >
-            <Eye size={16} className="text-slate-500" />
+            <Pencil size={16} className="text-slate-500" />
           </button>
-        )}
-        {node.type === "FILE" && (
+        </TooltipButton>
+
+        <TooltipButton label={isFile ? "Move to trash" : "Delete folder"} danger>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onDownload(node.id);
+              onTrash(node);
             }}
-            className="p-2.5 rounded-lg hover:bg-slate-50"
-            aria-label="Download"
+            className="file-row-action-button file-row-action-button-danger"
+            aria-label="Move to trash"
           >
-            <Download size={16} className="text-slate-500" />
+            <Trash2 size={16} />
           </button>
-        )}
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(node);
-          }}
-          className="p-2.5 rounded-lg hover:bg-slate-50"
-          aria-label="Edit"
-        >
-          <Pencil size={16} className="text-slate-500" />
-        </button>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onTrash(node.id);
-          }}
-          className="p-2.5 rounded-lg hover:bg-red-50 text-red-600"
-          aria-label="Move to trash"
-        >
-          <Trash2 size={16} />
-        </button>
+        </TooltipButton>
       </div>
     </div>
+  );
+}
+
+function TooltipButton({
+  children,
+  label,
+  danger = false,
+}: {
+  children: React.ReactNode;
+  label: string;
+  danger?: boolean;
+}) {
+  return (
+    <span className="ui-tooltip-wrap" data-danger={danger ? "true" : undefined}>
+      {children}
+      <span className="ui-tooltip ui-tooltip--row" role="tooltip">
+        {label}
+      </span>
+    </span>
   );
 }

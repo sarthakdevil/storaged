@@ -64,7 +64,7 @@ type Props = {
   onDownload: (id: string) => void;
   onPreview?: (node: DriveNode) => void;
   onEdit: (node: DriveNode) => void;
-  onTrash: (id: string) => void;
+  onTrash: (node: DriveNode) => void;
 };
 
 export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash }: Props) {
@@ -97,58 +97,61 @@ export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash 
       {/* Context menu toggle */}
       <div ref={menuRef} className="absolute top-2 right-2 z-10">
         <button
-          className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-slate-100 transition-all"
+          type="button"
+          aria-label="Open item actions"
+          aria-expanded={menuOpen}
+          className="file-card-menu-trigger"
           onClick={(e) => {
             e.stopPropagation();
             setMenuOpen((v) => !v);
           }}
         >
-          <MoreVertical size={15} className="text-slate-500" />
+          <MoreVertical size={16} />
         </button>
 
         {menuOpen && (
-          <div className="absolute right-0 top-8 w-44 bg-white border border-slate-200 rounded-xl shadow-xl py-1 text-sm">
+          <div className="file-card-menu-panel absolute right-0 top-10 w-48 py-1.5 text-sm">
             {node.type === "FILE" && (
               <button
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50"
+                className="file-card-menu-item"
                 onClick={(e) => {
                   e.stopPropagation();
                   setMenuOpen(false);
                   onPreview?.(node);
                 }}
               >
-                <Eye size={14} className="text-slate-400" /> Preview
+                <Eye size={14} /> Preview
               </button>
             )}
             {node.type === "FILE" && (
               <button
-                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50"
+                className="file-card-menu-item"
                 onClick={(e) => {
                   e.stopPropagation();
                   setMenuOpen(false);
                   onDownload(node.id);
                 }}
               >
-                <Download size={14} className="text-slate-400" /> Download
+                <Download size={14} /> Download
               </button>
             )}
             <button
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50"
+              className="file-card-menu-item"
               onClick={(e) => {
                 e.stopPropagation();
                 setMenuOpen(false);
                 onEdit(node);
               }}
             >
-              <Pencil size={14} className="text-slate-400" /> Edit details
+              <Pencil size={14} /> Edit details
             </button>
-            <div className="my-1 border-t border-slate-100" />
+            <div className="file-card-menu-divider" />
             <button
-              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-red-600 hover:bg-red-50"
+              className="file-card-menu-item file-card-menu-item-danger"
               onClick={(e) => {
                 e.stopPropagation();
                 setMenuOpen(false);
-                onTrash(node.id);
+                onTrash(node);
               }}
             >
               <Trash2 size={14} /> Move to trash

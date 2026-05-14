@@ -243,7 +243,7 @@ button:disabled {
 }
 
 .drive-content {
-  padding: 16px 0 40px;
+  padding: 28px 0 48px;
 }
 
 .drive-inner {
@@ -257,6 +257,10 @@ button:disabled {
   letter-spacing: 0.06em;
 }
 
+.drive-inner > .space-y-10 {
+  padding-top: 4px;
+}
+
 .drive-card {
   background: var(--color-card);
   border: 1px solid var(--color-card-border);
@@ -265,6 +269,177 @@ button:disabled {
 
 .drive-card:hover {
   transform: translateY(-2px);
+}
+
+.file-card-menu-trigger {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #64748b;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  opacity: 0.92;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.drive-card:hover .file-card-menu-trigger,
+.file-card-menu-trigger:focus-visible,
+.file-card-menu-trigger[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.file-card-menu-trigger:hover,
+.file-card-menu-trigger:focus-visible {
+  border-color: rgba(99, 102, 241, 0.24);
+  background: #eef2ff;
+  color: #4f46e5;
+  transform: translateY(-1px);
+}
+
+.file-card-menu-trigger svg {
+  flex: 0 0 auto;
+}
+
+.file-card-menu-panel {
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.file-card-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 0;
+  background: transparent;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.file-card-menu-item svg {
+  color: #94a3b8;
+}
+
+.file-card-menu-item:hover {
+  background: #f8fafc;
+}
+
+.file-card-menu-item-danger {
+  color: #dc2626;
+}
+
+.file-card-menu-item-danger svg {
+  color: #ef4444;
+}
+
+.file-card-menu-item-danger:hover {
+  background: #fef2f2;
+}
+
+.file-card-menu-divider {
+  height: 1px;
+  margin: 6px 0;
+  background: #eef2f7;
+}
+
+.file-row-action-button {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease,
+    color 160ms ease;
+  flex: 0 0 auto;
+}
+
+.file-row-action-button:hover,
+.file-row-action-button:focus-visible {
+  background: rgba(248, 250, 252, 0.96);
+  transform: translateY(-1px);
+}
+
+.file-row-action-button-danger:hover,
+.file-row-action-button-danger:focus-visible {
+  background: #fff1f2;
+}
+
+.ui-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ui-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 20;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  pointer-events: none;
+  padding: 7px 10px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.ui-tooltip--row {
+  bottom: calc(100% + 8px);
+}
+
+.ui-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 6px 6px 0 6px;
+  border-style: solid;
+  border-color: rgba(15, 23, 42, 0.96) transparent transparent transparent;
+}
+
+.ui-tooltip-wrap:hover .ui-tooltip,
+.ui-tooltip-wrap:focus-within .ui-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.ui-tooltip-wrap[data-danger="true"] .ui-tooltip {
+  background: rgba(127, 29, 29, 0.96);
+}
+
+.ui-tooltip-wrap[data-danger="true"] .ui-tooltip::after {
+  border-color: rgba(127, 29, 29, 0.96) transparent transparent transparent;
 }
 
 /* UI tweaks: stronger sidebar contrast and larger, bolder nav labels */
