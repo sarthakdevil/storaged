@@ -22,28 +22,30 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-6 right-6 z-50 flex w-[min(92vw,24rem)] flex-col gap-3 pointer-events-none">
+      <div className="fixed bottom-6 right-6 z-50 flex w-[min(92vw,22rem)] flex-col gap-2.5 pointer-events-none">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-[0_20px_50px_rgba(15,23,42,0.16)] backdrop-blur-md transition-all duration-200 animate-in slide-in-from-right-4 fade-in ${
+            className={`toast-slide-in pointer-events-auto flex items-center gap-3 rounded-2xl border px-4 py-3.5 shadow-2xl ${
               t.type === "error"
-                ? "border-red-200 bg-red-50/95 text-red-900"
-                : "border-slate-200 bg-white/95 text-slate-900"
+                ? "border-red-200 bg-white text-slate-900"
+                : "border-slate-200 bg-white text-slate-900"
             }`}
           >
             <div
-              className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-                t.type === "error" ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                t.type === "error" ? "bg-red-50 text-red-500" : "bg-emerald-50 text-emerald-500"
               }`}
             >
-              {t.type === "error" ? <XCircle size={16} /> : <CheckCircle size={16} />}
+              {t.type === "error" ? <XCircle size={18} /> : <CheckCircle size={18} />}
             </div>
-            <div className="min-w-0 flex-1 pt-0.5 text-sm font-medium leading-6">{t.message}</div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-800 leading-snug">{t.message}</p>
+            </div>
             <button
               onClick={() => dismiss(t.id)}
-              className="mt-0.5 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-              aria-label="Dismiss toast"
+              className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Dismiss"
             >
               <X size={14} />
             </button>

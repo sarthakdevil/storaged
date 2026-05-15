@@ -15,6 +15,7 @@ import {
   Trash2,
   Star,
   MoreVertical,
+  Share2,
 } from "lucide-react";
 import { DriveNode } from "../lib/api";
 
@@ -64,10 +65,21 @@ type Props = {
   onDownload: (id: string) => void;
   onPreview?: (node: DriveNode) => void;
   onEdit: (node: DriveNode) => void;
+  onShare?: (node: DriveNode) => void;
+  onToggleFavorite: (node: DriveNode) => void;
   onTrash: (node: DriveNode) => void;
 };
 
-export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash }: Props) {
+export function FileCard({
+  node,
+  onOpen,
+  onDownload,
+  onPreview,
+  onEdit,
+  onShare,
+  onToggleFavorite,
+  onTrash,
+}: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const Icon = getIcon(node);
@@ -84,7 +96,7 @@ export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash 
 
   return (
     <div
-      className="group relative drive-card rounded-3xl p-6 cursor-pointer transition-all duration-200 select-none min-h-[220px] flex flex-col"
+      className="group relative drive-card rounded-3xl p-5 cursor-pointer transition-all duration-200 select-none min-h-[200px] flex flex-col"
       onClick={() => onOpen(node)}
     >
       {/* Favorite badge */}
@@ -96,21 +108,48 @@ export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash 
 
       {/* Context menu toggle */}
       <div ref={menuRef} className="absolute top-2 right-2 z-10">
-        <button
-          type="button"
-          aria-label="Open item actions"
-          aria-expanded={menuOpen}
-          className="file-card-menu-trigger"
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen((v) => !v);
-          }}
-        >
-          <MoreVertical size={16} />
-        </button>
+        <div className="flex items-center gap-1">
+          {node.type === "FILE" && onShare && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(node);
+              }}
+              aria-label="Share file"
+              className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+            >
+              <Share2 size={14} />
+            </button>
+          )}
+
+          <button
+            type="button"
+            aria-label="Open item actions"
+            aria-expanded={menuOpen}
+            className="file-card-menu-trigger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((v) => !v);
+            }}
+          >
+            <MoreVertical size={16} />
+          </button>
+        </div>
 
         {menuOpen && (
           <div className="file-card-menu-panel absolute right-0 top-10 w-48 py-1.5 text-sm">
+            <button
+              className="file-card-menu-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+                onToggleFavorite(node);
+              }}
+            >
+              <Star size={14} className={node.isFavorite ? "fill-amber-400 text-amber-400" : "text-slate-400"} />
+              {node.isFavorite ? "Remove from favorites" : "Add to favorites"}
+            </button>
             {node.type === "FILE" && (
               <button
                 className="file-card-menu-item"
@@ -133,6 +172,18 @@ export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash 
                 }}
               >
                 <Download size={14} /> Download
+              </button>
+            )}
+            {node.type === "FILE" && onShare && (
+              <button
+                className="file-card-menu-item"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  onShare(node);
+                }}
+              >
+                <Share2 size={14} /> Share
               </button>
             )}
             <button
@@ -161,16 +212,16 @@ export function FileCard({ node, onOpen, onDownload, onPreview, onEdit, onTrash 
       </div>
 
       {/* Icon */}
-      <div className={`h-[48%] w-full ${bg} rounded-2xl flex items-center justify-center mb-3 shadow-sm`}>
-        <Icon size={36} color={color} />
+      <div className={`flex-1 w-full ${bg} rounded-2xl flex items-center justify-center mb-4 shadow-sm min-h-25`}>
+        <Icon size={38} color={color} />
       </div>
 
       {/* Name */}
-      <p className="text-sm font-semibold text-slate-900 truncate mb-1">{node.name}</p>
+      <p className="text-[13px] font-semibold text-slate-900 truncate mb-1 leading-snug">{node.name}</p>
 
       {/* Meta */}
-      <p className="text-[11px] text-slate-500">
-        {node.type === "FILE" ? formatSize(node.sizeBytes) : "Folder"} - {formatDate(node.updatedAt)}
+      <p className="text-[11px] text-slate-400 leading-relaxed">
+        {node.type === "FILE" ? formatSize(node.sizeBytes) : "Folder"} &middot; {formatDate(node.updatedAt)}
       </p>
 
       {/* Tags */}

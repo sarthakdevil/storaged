@@ -12,6 +12,7 @@ import {
   Database,
   List,
   LayoutGrid,
+  Star,
 } from "lucide-react";
 import { DriveNode, api } from "../../lib/api";
 import { useNodes, useTrashNode } from "../../lib/queries";
@@ -22,21 +23,26 @@ import { EditModal } from "../../components/EditModal";
 import { UploadModal } from "../../components/UploadModal";
 import { NewFolderModal } from "../../components/NewFolderModal";
 import { StorageConnectionsModal } from "../../components/StorageConnectionsModal";
+import { ShareModal } from "../../components/ShareModal";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { useToast } from "../../components/Toast";
+import { useToggleFavorite } from "../../lib/queries";
 
 type Crumb = { id: string | null; name: string };
 
 export default function DrivePage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [activeTab, setActiveTab] = useState<"all" | "favorites">("all");
   const { toast } = useToast();
   const { data: nodes = [], isLoading, isError, refetch } = useNodes();
   const trashNode = useTrashNode();
+  const toggleFavorite = useToggleFavorite();
 
   const [search, setSearch] = useState("");
   const [crumbs, setCrumbs] = useState<Crumb[]>([{ id: null, name: "My Drive" }]);
   const [editNode, setEditNode] = useState<DriveNode | null>(null);
   const [previewNode, setPreviewNode] = useState<DriveNode | null>(null);
+  const [shareNode, setShareNode] = useState<DriveNode | null>(null);
   const [pendingTrashNode, setPendingTrashNode] = useState<DriveNode | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -46,10 +52,11 @@ export default function DrivePage() {
 
   const visible = useMemo(() => {
     const inFolder = nodes.filter((n) => n.parentId === currentParentId);
-    if (!search.trim()) return inFolder;
+    const tabFiltered = activeTab === "favorites" ? inFolder.filter((n) => n.isFavorite) : inFolder;
+    if (!search.trim()) return tabFiltered;
     const q = search.toLowerCase();
-    return inFolder.filter((n) => n.name.toLowerCase().includes(q));
-  }, [nodes, currentParentId, search]);
+    return tabFiltered.filter((n) => n.name.toLowerCase().includes(q));
+  }, [nodes, currentParentId, activeTab, search]);
 
   const folders = visible.filter((n) => n.type === "FOLDER");
   const files = visible.filter((n) => n.type === "FILE");
@@ -79,6 +86,10 @@ export default function DrivePage() {
 
   function requestTrash(node: DriveNode) {
     setPendingTrashNode(node);
+  }
+
+  function handleToggleFavorite(node: DriveNode) {
+    toggleFavorite.mutate({ id: node.id, isFavorite: !node.isFavorite });
   }
 
   function confirmTrash() {
@@ -134,7 +145,7 @@ export default function DrivePage() {
 
       {/* Breadcrumbs / Title */}
       {currentParentId === null ? (
-        <div className="drive-inner pt-10 pb-10">
+        <div className="drive-inner pt-10 pb-14">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Workspace</p>
@@ -169,22 +180,47 @@ export default function DrivePage() {
         </div>
       )}
 
-      <div className="drive-inner pb-2">
-        <div className="flex justify-end">
-          <div className="inline-flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+      <div className="drive-inner mt-8 pb-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+            <button
+              onClick={() => setActiveTab("all")}
+              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                activeTab === "all"
+                  ? "bg-indigo-500 text-white shadow-md"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+              }`}
+            >
+              <HardDrive size={15} />
+              All files
+            </button>
+            <button
+              onClick={() => setActiveTab("favorites")}
+              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                activeTab === "favorites"
+                  ? "bg-amber-50 text-amber-700 shadow-md"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+              }`}
+            >
+              <Star size={15} className={activeTab === "favorites" ? "fill-amber-400 text-amber-400" : ""} />
+              Favorites
+            </button>
+          </div>
+
+          <div className="inline-flex items-center gap-1 bg-slate-100 rounded-xl p-1.5">
             <button
               onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded-md transition ${viewMode === "grid" ? "bg-white shadow text-indigo-600" : "text-slate-400 hover:text-slate-600"}`}
+              className={`p-2 rounded-lg transition ${viewMode === "grid" ? "bg-white shadow text-indigo-600" : "text-slate-400 hover:text-slate-600"}`}
               aria-label="Grid view"
             >
-              <LayoutGrid size={15} />
+              <LayoutGrid size={16} />
             </button>
             <button
               onClick={() => setViewMode("list")}
-              className={`p-1.5 rounded-md transition ${viewMode === "list" ? "bg-white shadow text-indigo-600" : "text-slate-400 hover:text-slate-600"}`}
+              className={`p-2 rounded-lg transition ${viewMode === "list" ? "bg-white shadow text-indigo-600" : "text-slate-400 hover:text-slate-600"}`}
               aria-label="List view"
             >
-              <List size={15} />
+              <List size={16} />
             </button>
           </div>
         </div>
@@ -216,7 +252,11 @@ export default function DrivePage() {
               <HardDrive size={24} className="text-indigo-400" />
             </div>
             <p className="text-sm font-medium text-slate-600">
-              {search ? "No files match your search" : "This folder is empty"}
+              {search
+                ? "No files match your search"
+                : activeTab === "favorites"
+                  ? "No favorites in this folder"
+                  : "This folder is empty"}
             </p>
             {!search && (
               <button
@@ -238,7 +278,7 @@ export default function DrivePage() {
                 </div>
                 <div className={
                   viewMode === "grid"
-                    ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
+                    ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-5"
                     : "flex flex-col gap-3"
                 }>
                   {folders.map((node) => (
@@ -249,6 +289,8 @@ export default function DrivePage() {
                         onOpen={openNode}
                         onDownload={handleDownload}
                         onEdit={setEditNode}
+                        onShare={setShareNode}
+                        onToggleFavorite={handleToggleFavorite}
                         onTrash={requestTrash}
                       />
                     ) : (
@@ -258,6 +300,8 @@ export default function DrivePage() {
                         onOpen={openNode}
                         onDownload={handleDownload}
                         onEdit={setEditNode}
+                        onShare={setShareNode}
+                        onToggleFavorite={handleToggleFavorite}
                         onTrash={requestTrash}
                       />
                     )
@@ -274,7 +318,7 @@ export default function DrivePage() {
                   </h2>
                 </div>
                 {viewMode === "grid" ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-5">
                     {files.map((node) => (
                       <FileCard
                         key={node.id}
@@ -283,6 +327,8 @@ export default function DrivePage() {
                         onDownload={handleDownload}
                         onPreview={setPreviewNode}
                         onEdit={setEditNode}
+                        onShare={setShareNode}
+                        onToggleFavorite={handleToggleFavorite}
                         onTrash={requestTrash}
                       />
                     ))}
@@ -297,6 +343,8 @@ export default function DrivePage() {
                         onDownload={handleDownload}
                         onPreview={setPreviewNode}
                         onEdit={setEditNode}
+                        onShare={setShareNode}
+                        onToggleFavorite={handleToggleFavorite}
                         onTrash={requestTrash}
                       />
                     ))}
@@ -333,6 +381,7 @@ export default function DrivePage() {
       />
       <PreviewModal node={previewNode} onClose={() => setPreviewNode(null)} />
       <EditModal node={editNode} onClose={() => setEditNode(null)} />
+      {shareNode && <ShareModal node={shareNode} onClose={() => setShareNode(null)} />}
     </div>
   );
 }

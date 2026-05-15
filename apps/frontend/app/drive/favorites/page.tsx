@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Star, Loader2, CloudOff } from "lucide-react";
 import { DriveNode, api } from "../../../lib/api";
-import { useNodes, useTrashNode } from "../../../lib/queries";
+import { useNodes, useTrashNode, useToggleFavorite } from "../../../lib/queries";
 import { FileCard } from "../../../components/FileCard";
 import { EditModal } from "../../../components/EditModal";
 import { useToast } from "../../../components/Toast";
@@ -12,6 +12,7 @@ export default function FavoritesPage() {
   const { toast } = useToast();
   const { data: allNodes = [], isLoading, isError } = useNodes();
   const trashNode = useTrashNode();
+  const toggleFavorite = useToggleFavorite();
   const [editNode, setEditNode] = useState<DriveNode | null>(null);
 
   const nodes = allNodes.filter((n) => n.isFavorite);
@@ -23,6 +24,10 @@ export default function FavoritesPage() {
     } catch (err) {
       toast(err instanceof Error ? err.message : "Download failed", "error");
     }
+  }
+
+  function handleToggleFavorite(node: DriveNode) {
+    toggleFavorite.mutate({ id: node.id, isFavorite: !node.isFavorite });
   }
 
   return (
@@ -68,6 +73,7 @@ export default function FavoritesPage() {
                 onOpen={() => {}}
                 onDownload={handleDownload}
                 onEdit={setEditNode}
+                onToggleFavorite={handleToggleFavorite}
                 onTrash={(id) => trashNode.mutate(id)}
               />
             ))}

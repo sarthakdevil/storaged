@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { HardDrive, Trash2, LogOut, Star, LayoutDashboard } from "lucide-react";
+import { HardDrive, Trash2, LogOut, LayoutDashboard } from "lucide-react";
 import { useStorageDashboard } from "../lib/queries";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -23,7 +23,6 @@ import { useAuth } from "./AuthContext";
 const NAV = [
   { href: "/drive/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/drive", icon: HardDrive, label: "My Drive" },
-  { href: "/drive/favorites", icon: Star, label: "Favorites" },
   { href: "/drive/trash", icon: Trash2, label: "Trash" },
 ];
 

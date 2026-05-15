@@ -146,3 +146,11 @@ export type StorageDashboard = {
 };
 
 export type AuthUser = { id: string; email: string; name: string | null };
+
+export type ShareLink = {
+  id: string;
+  token: string;
+  nodeId: string;
+  expiresAt: string | null;
+  createdAt: string;
+};

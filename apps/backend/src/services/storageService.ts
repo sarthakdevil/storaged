@@ -1374,3 +1374,107 @@ export const getStorageDashboard = async (options?: StorageListOptions) => {
     storages,
   };
 };
+
+// ─── Share links ──────────────────────────────────────────────────────────────
+
+const serializeShareLink = (link: { id: string; token: string; nodeId: string; expiresAt: Date | null; createdAt: Date }) => ({
+  id: link.id,
+  token: link.token,
+  nodeId: link.nodeId,
+  expiresAt: link.expiresAt?.toISOString() ?? null,
+  createdAt: link.createdAt.toISOString(),
+});
+
+export const createShareLink = async ({
+  userId,
+  nodeId,
+  expiresIn,
+}: {
+  userId: string;
+  nodeId: string;
+  expiresIn?: number; // seconds; undefined = no expiry
+}) => {
+  const node = await prisma.node.findFirst({
+    where: { id: nodeId, type: "FILE", isDeleted: false, drive: { ownerId: userId } },
+  });
+  if (!node) throw new StorageError("File not found.", 404);
+
+  const expiresAt = expiresIn != null ? new Date(Date.now() + expiresIn * 1000) : null;
+
+  const link = await prisma.shareLink.create({
+    data: { nodeId, createdById: userId, expiresAt },
+  });
+
+  return serializeShareLink(link);
+};
+
+export const listShareLinks = async ({
+  userId,
+  nodeId,
+}: {
+  userId: string;
+  nodeId: string;
+}) => {
+  const node = await prisma.node.findFirst({
+    where: { id: nodeId, isDeleted: false, drive: { ownerId: userId } },
+  });
+  if (!node) throw new StorageError("File not found.", 404);
+
+  const links = await prisma.shareLink.findMany({
+    where: { nodeId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return links.map(serializeShareLink);
+};
+
+export const revokeShareLink = async ({
+  userId,
+  linkId,
+}: {
+  userId: string;
+  linkId: string;
+}) => {
+  const link = await prisma.shareLink.findFirst({
+    where: { id: linkId, createdById: userId },
+  });
+  if (!link) throw new StorageError("Share link not found.", 404);
+
+  await prisma.shareLink.delete({ where: { id: linkId } });
+  return { success: true };
+};
+
+export const resolveShareLink = async (token: string) => {
+  const link = await prisma.shareLink.findUnique({
+    where: { token },
+    include: {
+      node: { include: { fileObjects: { include: { bucket: true } } } },
+    },
+  });
+
+  if (!link) throw new StorageError("Share link not found.", 404);
+  if (link.expiresAt && link.expiresAt < new Date()) {
+    throw new StorageError("This share link has expired.", 410);
+  }
+  if (link.node.isDeleted) throw new StorageError("File is no longer available.", 404);
+
+  const fo = link.node.fileObjects[0];
+  if (!fo) throw new StorageError("File data not found.", 404);
+
+  const s3Client = createS3Client(getBucketConfig(fo.bucket.config));
+  const command = new GetObjectCommand({
+    Bucket: fo.bucket.bucketName,
+    Key: fo.objectKey,
+    ResponseContentDisposition: `inline; filename="${link.node.name}"`,
+    ResponseContentType: link.node.mimeType ?? "application/octet-stream",
+  });
+
+  const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+
+  return {
+    url,
+    name: link.node.name,
+    mimeType: link.node.mimeType,
+    sizeBytes: link.node.sizeBytes.toString(),
+  };
+};

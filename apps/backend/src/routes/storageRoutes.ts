@@ -17,6 +17,10 @@ import {
   updateConnection,
   updateNodeHandler,
   uploadFileHandler,
+  createShareLinkHandler,
+  listShareLinksHandler,
+  revokeShareLinkHandler,
+  resolveShareLinkHandler,
 } from "../controllers/storageController";
 import { requireAuth } from "../middleware/requireAuth";
 
@@ -40,5 +44,11 @@ router.patch("/files/:nodeId", requireAuth, updateNodeHandler);
 router.post("/files/:nodeId/trash", requireAuth, trashNodeHandler);
 router.post("/files/:nodeId/restore", requireAuth, restoreNodeHandler);
 router.delete("/files/:nodeId", requireAuth, deleteNodeHandler);
+
+// Share links — create/list require auth; resolve is public
+router.post("/files/:nodeId/shares", requireAuth, createShareLinkHandler);
+router.get("/files/:nodeId/shares", requireAuth, listShareLinksHandler);
+router.delete("/shares/:linkId", requireAuth, revokeShareLinkHandler);
+router.get("/share/:token", resolveShareLinkHandler);
 
 export default router;

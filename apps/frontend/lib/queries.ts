@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   api,
   DriveNode,
+  ShareLink,
   StorageConnection,
   StorageConnectionInput,
   StorageDashboard,
@@ -236,6 +237,24 @@ export function useUpdateNode() {
   });
 }
 
+export function useToggleFavorite() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ id, isFavorite }: { id: string; isFavorite: boolean }) =>
+      api.patch<DriveNode>(`/files/${id}`, { isFavorite }),
+    onSuccess: (updated) => {
+      qc.setQueryData<DriveNode[]>(keys.nodes, (prev) =>
+        prev?.map((n) => (n.id === updated.id ? updated : n)) ?? []
+      );
+      toast(updated.isFavorite ? "Added to favorites" : "Removed from favorites");
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Failed to update favorite", "error");
+    },
+  });
+}
+
 export function useUploadFile() {
   const qc = useQueryClient();
   return useMutation({
@@ -328,6 +347,52 @@ export function useUpdateStorageConnection() {
     },
     onError: (err) => {
       toast(err instanceof Error ? err.message : "Could not update storage", "error");
+    },
+  });
+}
+
+// ─── Share links ──────────────────────────────────────────────────────────────
+
+export function useShareLinks(nodeId: string | null) {
+  const { token } = useAuth();
+  return useQuery({
+    queryKey: ["share-links", nodeId],
+    queryFn: () => api.get<ShareLink[]>(`/files/${nodeId}/shares`),
+    enabled: !!token && !!nodeId,
+  });
+}
+
+export function useCreateShareLink() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ nodeId, expiresIn }: { nodeId: string; expiresIn?: number }) =>
+      api.post<ShareLink>(`/files/${nodeId}/shares`, { expiresIn }),
+    onSuccess: (link) => {
+      qc.setQueryData<ShareLink[]>(["share-links", link.nodeId], (prev) =>
+        prev ? [link, ...prev] : [link]
+      );
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Could not create share link", "error");
+    },
+  });
+}
+
+export function useRevokeShareLink() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ linkId, nodeId }: { linkId: string; nodeId: string }) =>
+      api.del(`/shares/${linkId}`).then(() => ({ linkId, nodeId })),
+    onSuccess: ({ linkId, nodeId }) => {
+      qc.setQueryData<ShareLink[]>(["share-links", nodeId], (prev) =>
+        prev?.filter((l) => l.id !== linkId) ?? []
+      );
+      toast("Share link revoked");
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Could not revoke share link", "error");
     },
   });
 }

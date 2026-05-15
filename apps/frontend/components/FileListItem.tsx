@@ -2,7 +2,7 @@
 
 import React from "react";
 import { DriveNode } from "../lib/api";
-import { File, Folder, Download, Pencil, Trash2, Star, Eye } from "lucide-react";
+import { File, Folder, Download, Pencil, Trash2, Star, Eye, Share2 } from "lucide-react";
 import { formatSize, formatDate } from "./FileCard";
 
 type Props = {
@@ -11,6 +11,8 @@ type Props = {
   onDownload: (id: string) => void;
   onPreview?: (node: DriveNode) => void;
   onEdit: (node: DriveNode) => void;
+  onShare?: (node: DriveNode) => void;
+  onToggleFavorite: (node: DriveNode) => void;
   onTrash: (node: DriveNode) => void;
 };
 
@@ -21,7 +23,16 @@ function getIcon(node: DriveNode) {
   return File;
 }
 
-export function FileListItem({ node, onOpen, onDownload, onPreview, onEdit, onTrash }: Props) {
+export function FileListItem({
+  node,
+  onOpen,
+  onDownload,
+  onPreview,
+  onEdit,
+  onShare,
+  onToggleFavorite,
+  onTrash,
+}: Props) {
   const Icon = getIcon(node);
   const isFile = node.type === "FILE";
 
@@ -75,6 +86,21 @@ export function FileListItem({ node, onOpen, onDownload, onPreview, onEdit, onTr
           </TooltipButton>
         )}
 
+        {isFile && onShare && (
+          <TooltipButton label="Share file">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(node);
+              }}
+              className="file-row-action-button"
+              aria-label="Share"
+            >
+              <Share2 size={16} className="text-slate-500" />
+            </button>
+          </TooltipButton>
+        )}
+
         <TooltipButton label={isFile ? "Edit details" : "Rename folder"}>
           <button
             onClick={(e) => {
@@ -85,6 +111,22 @@ export function FileListItem({ node, onOpen, onDownload, onPreview, onEdit, onTr
             aria-label="Edit"
           >
             <Pencil size={16} className="text-slate-500" />
+          </button>
+        </TooltipButton>
+
+        <TooltipButton label={node.isFavorite ? "Remove from favorites" : "Add to favorites"}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite(node);
+            }}
+            className="file-row-action-button"
+            aria-label={node.isFavorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <Star
+              size={16}
+              className={node.isFavorite ? "fill-amber-400 text-amber-400" : "text-slate-400"}
+            />
           </button>
         </TooltipButton>
 

@@ -128,16 +128,17 @@ button:disabled {
 
 .drive-main > div > header,
 .drive-toolbar {
-  min-height: 72px;
+  min-height: 76px;
   width: 100%;
-  padding: 12px 0;
+  padding: 14px 0;
   display: flex;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--color-card-border);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
 }
 
 .drive-search {
@@ -243,13 +244,13 @@ button:disabled {
 }
 
 .drive-content {
-  padding: 28px 0 48px;
+  padding: 8px 0 56px;
 }
 
 .drive-inner {
   width: min(1180px, 100%);
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 32px;
 }
 
 .drive-section-title {
@@ -636,10 +637,10 @@ button:disabled {
 
 .storage-mini-status {
   flex: 0 0 auto;
-  padding: 3px 7px;
-  border-radius: 999px;
+  padding: 4px 10px; /* more horizontal breathing room */
+  border-radius: 10px; /* less rounded pill */
   font-size: 10px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1;
   text-transform: capitalize;
 }
@@ -1665,6 +1666,22 @@ button:disabled {
     flex-direction: column;
     gap: 8px;
   }
+}
+
+/* Toast slide-in animation */
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.toast-slide-in {
+  animation: toast-slide-in 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 ::-webkit-scrollbar {

@@ -18,6 +18,10 @@ import {
   updateNodeDetails,
   updateStorageConnection,
   uploadFile,
+  createShareLink,
+  listShareLinks,
+  revokeShareLink,
+  resolveShareLink,
 } from "../services/storageService";
 import { AuthenticatedRequest } from "../middleware/requireAuth";
 
@@ -270,6 +274,50 @@ export const updateNodeHandler = async (req: Request, res: Response) => {
 export const storageDashboard = async (req: Request, res: Response) => {
   try {
     const result = await getStorageDashboard(getPaginationOptions(req));
+    res.status(200).json(result);
+  } catch (error) {
+    handleStorageError(error, res);
+  }
+};
+
+export const createShareLinkHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+    const { expiresIn } = req.body as { expiresIn?: number };
+    const result = await createShareLink({
+      userId,
+      nodeId: getRouteParam(req.params.nodeId),
+      expiresIn: typeof expiresIn === "number" && expiresIn > 0 ? expiresIn : undefined,
+    });
+    res.status(201).json(result);
+  } catch (error) {
+    handleStorageError(error, res);
+  }
+};
+
+export const listShareLinksHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+    const result = await listShareLinks({ userId, nodeId: getRouteParam(req.params.nodeId) });
+    res.status(200).json(result);
+  } catch (error) {
+    handleStorageError(error, res);
+  }
+};
+
+export const revokeShareLinkHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req as AuthenticatedRequest;
+    const result = await revokeShareLink({ userId, linkId: getRouteParam(req.params.linkId) });
+    res.status(200).json(result);
+  } catch (error) {
+    handleStorageError(error, res);
+  }
+};
+
+export const resolveShareLinkHandler = async (req: Request, res: Response) => {
+  try {
+    const result = await resolveShareLink(getRouteParam(req.params.token));
     res.status(200).json(result);
   } catch (error) {
     handleStorageError(error, res);
