@@ -71,27 +71,6 @@ function CopyBtn({ text, label = "Copy" }: { text: string; label?: string }) {
   );
 }
 
-function CopyBtnLight({ text, label = "Copy" }: { text: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={async () => {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-300 ${
-        copied
-          ? "bg-emerald-50 text-emerald-600 border border-emerald-200 shadow-sm"
-          : "bg-slate-100/80 text-slate-500 hover:bg-slate-200 border border-slate-200/60"
-      }`}
-    >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-      {copied ? "Copied!" : label}
-    </button>
-  );
-}
-
 function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (k: CreatedApiKey) => void }) {
   const [name, setName] = useState("");
   const [expiresIn, setExpiresIn] = useState<number | undefined>(undefined);
@@ -157,14 +136,14 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 px-6 min-h-[44px] rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+              className="flex-1 py-3 px-6 min-h-11 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!name.trim() || createKey.isPending}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-6 min-h-[44px] rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold transition-all shadow-md shadow-indigo-500/20"
+              className="flex-1 flex items-center justify-center gap-2 py-3 px-6 min-h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold transition-all shadow-md shadow-indigo-500/20"
             >
               {createKey.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
               Generate Key
@@ -228,9 +207,9 @@ function RevealKeyModal({ created, onClose }: { created: CreatedApiKey; onClose:
 
           <button
             onClick={onClose}
-            className="w-full py-3.5 px-6 min-h-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold transition-all shadow-md"
+            className="w-full py-3.5 px-6 min-h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold transition-all shadow-md"
           >
-            I've stored it safely
+            I&apos;ve stored it safely
           </button>
         </div>
       </div>
@@ -264,10 +243,10 @@ function ApiReference({ apiBase }: { apiBase: string }) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-8 py-6 text-left hover:bg-white/5 transition-all group relative overflow-hidden"
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute inset-0 bg-linear-to-r from-indigo-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
         
         <div className="flex items-center gap-5 relative z-10">
-          <div className="w-12 h-12 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/10">
+          <div className="w-12 h-12 bg-linear-to-br from-indigo-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/10">
             <Terminal size={20} className="text-indigo-400" />
           </div>
           <div>
@@ -315,7 +294,7 @@ function ApiReference({ apiBase }: { apiBase: string }) {
                   </div>
                   <h4 className="text-xs font-bold text-white uppercase tracking-widest">Base URL</h4>
                 </div>
-                <div className="bg-white/5 rounded-2xl p-5 border border-white/5 h-[124px] flex flex-col justify-center">
+                <div className="bg-white/5 rounded-2xl p-5 border border-white/5 h-31 flex flex-col justify-center">
                   <p className="text-[11px] text-slate-400 mb-2 uppercase font-bold tracking-wider">Production Endpoint</p>
                   <div className="flex items-center gap-3">
                     <code className="text-sm font-mono text-white bg-white/10 px-3 py-2 rounded-xl border border-white/10 flex-1 truncate">{apiBase}</code>
@@ -327,7 +306,7 @@ function ApiReference({ apiBase }: { apiBase: string }) {
 
             <div className="divide-y divide-white/5 p-4">
               {ENDPOINTS.map((ep) => (
-                <div key={ep.path + ep.method} className="p-4 hover:bg-white/[0.03] rounded-2xl transition-all group">
+                <div key={ep.path + ep.method} className="p-4 hover:bg-white/3 rounded-2xl transition-all group">
                   <div className="flex flex-wrap items-center gap-3 mb-3">
                     <span className={`text-[11px] font-bold px-3 py-1.5 rounded-lg font-mono tracking-wider border shadow-sm ${METHOD_STYLES_DARK[ep.method]}`}>
                       {ep.method}
@@ -412,25 +391,25 @@ export default function ApiKeysPage() {
   const activeKeys = keys.filter(k => !k.expiresAt || new Date(k.expiresAt) >= new Date()).length;
 
   return (
-    <div className="drive-view flex flex-col min-h-full bg-[#f8fafc] relative pb-20">
+    <div className="drive-view flex flex-col min-h-full bg-surface relative pb-20">
       {/* Decorative background blurs */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-400/10 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-400/10 rounded-full blur-[100px] pointer-events-none" />
 
-      <header className="drive-toolbar relative z-20 border-b border-slate-200/50 bg-[#f8fafc]">
+      <header className="drive-toolbar relative z-20 border-b border-slate-200/50 bg-surface">
         <div className="drive-inner flex items-center justify-between gap-4 w-full py-2">
           <div className="flex items-center gap-5">
-            <div className="w-12 h-12 bg-gradient-to-br from-slate-900 to-indigo-900 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-900/20">
+            <div className="w-12 h-12 bg-linear-to-br from-slate-900 to-indigo-900 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-900/20">
               <Key size={20} className="text-white" />
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-[0.35em] text-indigo-500 font-extrabold mb-0.5">Developer Settings</p>
-              <h1 className="text-2xl font-extrabold bg-gradient-to-r from-slate-900 to-indigo-900 text-transparent bg-clip-text tracking-tight">API Keys</h1>
+              <h1 className="text-2xl font-extrabold bg-linear-to-r from-slate-900 to-indigo-900 text-transparent bg-clip-text tracking-tight">API Keys</h1>
             </div>
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="group flex items-center justify-center gap-3 px-8 py-3.5 min-h-[48px] rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-[0_8px_20px_-6px_rgba(79,70,229,0.5)] hover:shadow-[0_12px_25px_-6px_rgba(79,70,229,0.6)] hover:-translate-y-0.5"
+            className="group flex items-center justify-center gap-3 px-8 py-3.5 min-h-12 rounded-xl bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-[0_8px_20px_-6px_rgba(79,70,229,0.5)] hover:shadow-[0_12px_25px_-6px_rgba(79,70,229,0.6)] hover:-translate-y-0.5"
           >
             <Plus size={18} className="transition-transform group-hover:rotate-90 duration-300" />
             Generate New Key
@@ -442,9 +421,9 @@ export default function ApiKeysPage() {
         {/* Premium Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[
-            { icon: Sparkles, label: "Active Tokens", value: activeKeys,   bg: "bg-gradient-to-br from-indigo-500 to-blue-600", border: "border-indigo-100" },
-            { icon: Shield,   label: "Total Created", value: keys.length, bg: "bg-gradient-to-br from-slate-700 to-slate-900", border: "border-slate-200" },
-            { icon: Zap,      label: "Recently Used", value: keys.filter(k => k.lastUsedAt).length, bg: "bg-gradient-to-br from-emerald-500 to-teal-600", border: "border-emerald-100" },
+            { icon: Sparkles, label: "Active Tokens", value: activeKeys,   bg: "bg-linear-to-br from-indigo-500 to-blue-600", border: "border-indigo-100" },
+            { icon: Shield,   label: "Total Created", value: keys.length, bg: "bg-linear-to-br from-slate-700 to-slate-900", border: "border-slate-200" },
+            { icon: Zap,      label: "Recently Used", value: keys.filter(k => k.lastUsedAt).length, bg: "bg-linear-to-br from-emerald-500 to-teal-600", border: "border-emerald-100" },
           ].map(({ icon: Icon, label, value, bg, border }) => (
             <div key={label} className={`bg-white/60 backdrop-blur-lg rounded-2xl border ${border} p-6 flex items-center gap-5 shadow-sm hover:shadow-md transition-shadow hover:bg-white/80`}>
               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg ${bg} shrink-0`}>
@@ -478,7 +457,7 @@ export default function ApiKeysPage() {
             </div>
           ) : keys.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-5 text-center px-6">
-              <div className="w-20 h-20 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl flex items-center justify-center border border-indigo-100 shadow-inner">
+              <div className="w-20 h-20 bg-linear-to-br from-indigo-50 to-purple-50 rounded-2xl flex items-center justify-center border border-indigo-100 shadow-inner">
                 <Key size={32} className="text-indigo-400" />
               </div>
               <div>
@@ -487,7 +466,7 @@ export default function ApiKeysPage() {
               </div>
               <button
                 onClick={() => setShowCreate(true)}
-                className="mt-4 flex items-center justify-center gap-3 px-8 py-3.5 min-h-[48px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold transition-all shadow-lg shadow-slate-900/20 hover:-translate-y-0.5"
+                className="mt-4 flex items-center justify-center gap-3 px-8 py-3.5 min-h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold transition-all shadow-lg shadow-slate-900/20 hover:-translate-y-0.5"
               >
                 <Plus size={18} />
                 Generate First Key

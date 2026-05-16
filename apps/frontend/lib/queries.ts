@@ -26,7 +26,11 @@ const PROVIDER_DEFAULT_QUOTA_GB: Record<string, number> = {
 
 const gbToBytes = (gb: number) => BigInt(Math.round(gb * 1024 * 1024 * 1024));
 
-function applyDefaultQuota(conn: any) {
+type StorageConnectionWithQuotaSource = StorageConnection & {
+  quotaSource?: "provider-default" | "provider-reported" | "unknown";
+};
+
+function applyDefaultQuota(conn: StorageConnectionWithQuotaSource) {
   const originalQuota = conn.quotaBytes;
 
   if (conn.quotaBytes === null || conn.quotaBytes === undefined) {
@@ -38,7 +42,7 @@ function applyDefaultQuota(conn: any) {
         const used = BigInt(conn.usedBytes ?? "0");
         const avail = quota > used ? (quota - used).toString() : "0";
         conn.availableBytes = avail;
-      } catch (e) {
+      } catch {
         conn.availableBytes = null;
       }
     }
@@ -50,7 +54,7 @@ function applyDefaultQuota(conn: any) {
         const quota = BigInt(conn.quotaBytes);
         const used = BigInt(conn.usedBytes ?? "0");
         conn.availableBytes = quota > used ? (quota - used).toString() : "0";
-      } catch (e) {
+      } catch {
         conn.availableBytes = null;
       }
     }

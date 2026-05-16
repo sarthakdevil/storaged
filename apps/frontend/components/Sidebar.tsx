@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { HardDrive, Trash2, LogOut, LayoutDashboard, KeyRound } from "lucide-react";
 import { useStorageDashboard } from "../lib/queries";
 import React, { useEffect, useRef, useState } from "react";
+import { StorageConnection } from "../lib/api";
 
 function formatBytes(bytes: bigint | number | string | null | undefined) {
   if (bytes === null || bytes === undefined) return "—";
@@ -47,7 +48,7 @@ export function Sidebar() {
     : user?.email?.slice(0, 2).toUpperCase() ?? "??";
 
   return (
-    <aside className="app-sidebar w-64 shrink-0 h-screen flex flex-col bg-[#0f172a] text-white">
+    <aside className="app-sidebar w-64 shrink-0 h-screen flex flex-col bg-ink text-white">
       {/* Brand */}
       <div className="app-sidebar-brand flex items-center gap-2.5 px-5 py-5 border-b border-white/10">
         <div className="app-sidebar-brand-mark w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
@@ -126,7 +127,7 @@ function StorageUsageMeter() {
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
 
-  const used = dashboard?.usedBytes ? BigInt(dashboard.usedBytes) : 0n;
+  const used = dashboard?.usedBytes ? BigInt(dashboard.usedBytes) : BigInt(0);
   let quota: bigint | null = null;
   if (dashboard?.quotaBytes) {
     try {
@@ -138,22 +139,22 @@ function StorageUsageMeter() {
     // try to sum per-storage quotas
     const sum = dashboard.storages.reduce((acc, s) => {
       try {
-        return acc + (s.quotaBytes ? BigInt(s.quotaBytes) : 0n);
+        return acc + (s.quotaBytes ? BigInt(s.quotaBytes) : BigInt(0));
       } catch {
         return acc;
       }
-    }, 0n);
-    quota = sum > 0n ? sum : null;
+    }, BigInt(0));
+    quota = sum > BigInt(0) ? sum : null;
   }
 
-  const percent = quota && quota > 0n ? Number((used * 100n) / quota) : null;
+  const percent = quota && quota > BigInt(0) ? Number((used * BigInt(100)) / quota) : null;
 
   // Get provider name(s)
   const storages = dashboard?.storages ?? [];
   let providerLabel = "Unknown";
   if (storages.length > 0) {
     const names = storages
-      .map((s: any) => s.providerLabel ?? s.displayName ?? s.providerName ?? "Unknown")
+      .map((s: StorageConnection) => s.providerLabel ?? s.displayName ?? s.providerName ?? "Unknown")
       .filter(Boolean);
     if (names.length === 1) {
       providerLabel = names[0];
@@ -226,12 +227,12 @@ function StorageUsageMeter() {
       {showTooltip && storages.length > 0 && (
         <div className="absolute bottom-full left-0 right-0 mb-2 bg-slate-900 border border-slate-700 rounded-lg p-3 z-50 text-xs text-slate-200">
           <div className="font-semibold text-slate-100 mb-2">Storage Breakdown</div>
-          {storages.map((storage: any, idx: number) => {
-            const storageUsed = storage.usedBytes ? BigInt(storage.usedBytes) : 0n;
+          {storages.map((storage: StorageConnection, idx: number) => {
+            const storageUsed = storage.usedBytes ? BigInt(storage.usedBytes) : BigInt(0);
             const storageQuota = storage.quotaBytes ? BigInt(storage.quotaBytes) : null;
             const storagePercent =
-              storageQuota && storageQuota > 0n
-                ? Number((storageUsed * 100n) / storageQuota)
+              storageQuota && storageQuota > BigInt(0)
+                ? Number((storageUsed * BigInt(100)) / storageQuota)
                 : null;
             const barClass = progressColors[idx % progressColors.length];
             return (
@@ -293,7 +294,7 @@ function ProfileDropdown({ onLogout }: { onLogout: () => Promise<void> }) {
       </button>
 
       {open && (
-        <div className="absolute bottom-12 left-0 w-64 bg-[#071025] border border-white/6 rounded-md shadow-lg p-3 z-50">
+        <div className="absolute bottom-12 left-0 w-64 bg-sidebar-bg border border-white/6 rounded-md shadow-lg p-3 z-50">
           <div className="mb-2">
             <StorageUsageMeter />
           </div>

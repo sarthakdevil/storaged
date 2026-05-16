@@ -35,6 +35,7 @@ export function PreviewModal({ node, onClose }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const nodeId = node?.id;
 
   const extension = useMemo(() => {
     const name = node?.name ?? "";
@@ -59,7 +60,7 @@ export function PreviewModal({ node, onClose }: Props) {
       setPreviewUrl(null);
 
       try {
-        const res = await api.get<PreviewResponse>(`/files/${node.id}/preview`);
+        const res = await api.get<PreviewResponse>(`/files/${nodeId}/preview`);
         setPreviewUrl(res.url);
 
         if (isMarkdown || isText) {
@@ -74,14 +75,14 @@ export function PreviewModal({ node, onClose }: Props) {
     };
 
     loadPreview();
-  }, [node?.id, isMarkdown, isText]);
+  }, [node, nodeId, isMarkdown, isText]);
 
   if (!node) return null;
 
   async function handleDownload() {
     if (!node) return;
     try {
-      const res = await api.get<{ url: string }>(`/files/${node.id}/download`);
+      const res = await api.get<{ url: string }>(`/files/${nodeId}/download`);
       window.open(res.url, "_blank");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Download failed");

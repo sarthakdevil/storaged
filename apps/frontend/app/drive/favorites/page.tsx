@@ -74,7 +74,7 @@ export default function FavoritesPage() {
                 onDownload={handleDownload}
                 onEdit={setEditNode}
                 onToggleFavorite={handleToggleFavorite}
-                onTrash={(id) => trashNode.mutate(id)}
+                onTrash={(node) => trashNode.mutate(node.id)}
               />
             ))}
           </div>

@@ -22,7 +22,6 @@ export default function TrashPage() {
   const restore = useRestoreNode();
   const del = useDeleteNode();
   const emptyTrash = useEmptyTrash();
-  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [pendingDeleteNode, setPendingDeleteNode] = useState<TrashNode | null>(null);
 
   function confirmDelete() {
@@ -179,7 +178,7 @@ function TrashListItem({
             {restoring ? <Loader2 size={16} className="animate-spin text-indigo-500" /> : <RotateCcw size={16} className="text-indigo-500" />}
           </button>
         </ActionButton>
-        <ActionButton label="Preview" disabled={true} hidden={node.type !== "FILE"}>
+        <ActionButton label="Preview" hidden={node.type !== "FILE"}>
           <button className="file-row-action-button" aria-label="Preview" disabled>
             <Eye size={16} className="text-slate-300" />
           </button>
