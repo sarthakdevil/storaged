@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { HardDrive, Trash2, LogOut, LayoutDashboard } from "lucide-react";
+import { HardDrive, Trash2, LogOut, LayoutDashboard, KeyRound } from "lucide-react";
 import { useStorageDashboard } from "../lib/queries";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -24,6 +24,7 @@ const NAV = [
   { href: "/drive/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/drive", icon: HardDrive, label: "My Drive" },
   { href: "/drive/trash", icon: Trash2, label: "Trash" },
+  { href: "/drive/api-keys", icon: KeyRound, label: "API Keys" },
 ];
 
 export function Sidebar() {

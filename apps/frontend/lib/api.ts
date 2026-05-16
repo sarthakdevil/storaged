@@ -154,3 +154,16 @@ export type ShareLink = {
   expiresAt: string | null;
   createdAt: string;
 };
+
+export type ApiKey = {
+  id: string;
+  name: string;
+  prefix: string; // first 14 chars, safe to display
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+};
+
+export type CreatedApiKey = ApiKey & {
+  key: string; // full key — returned only on creation
+};

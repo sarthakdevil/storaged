@@ -4,6 +4,8 @@ import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tansta
 import { useRouter } from "next/navigation";
 import {
   api,
+  ApiKey,
+  CreatedApiKey,
   DriveNode,
   ShareLink,
   StorageConnection,
@@ -347,6 +349,51 @@ export function useUpdateStorageConnection() {
     },
     onError: (err) => {
       toast(err instanceof Error ? err.message : "Could not update storage", "error");
+    },
+  });
+}
+
+// ─── API keys ─────────────────────────────────────────────────────────────────
+
+export function useApiKeys() {
+  const { token } = useAuth();
+  return useQuery({
+    queryKey: ["api-keys"],
+    queryFn: () => api.get<ApiKey[]>("/apikeys"),
+    enabled: !!token,
+  });
+}
+
+export function useCreateApiKey() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ name, expiresIn }: { name: string; expiresIn?: number }) =>
+      api.post<CreatedApiKey>("/apikeys", { name, expiresIn }),
+    onSuccess: (created) => {
+      qc.setQueryData<ApiKey[]>(["api-keys"], (prev) =>
+        prev ? [created, ...prev] : [created]
+      );
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Could not create API key", "error");
+    },
+  });
+}
+
+export function useRevokeApiKey() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (keyId: string) => api.del(`/apikeys/${keyId}`),
+    onSuccess: (_, keyId) => {
+      qc.setQueryData<ApiKey[]>(["api-keys"], (prev) =>
+        prev?.filter((k) => k.id !== keyId) ?? []
+      );
+      toast("API key revoked");
+    },
+    onError: (err) => {
+      toast(err instanceof Error ? err.message : "Could not revoke key", "error");
     },
   });
 }

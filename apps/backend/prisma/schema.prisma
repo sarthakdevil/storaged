@@ -34,6 +34,7 @@ model User {
   createdNodes Node[]      @relation("NodeCreatedBy")
   deletedNodes Node[]      @relation("NodeDeletedBy")
   shareLinks   ShareLink[]
+  apiKeys      ApiKey[]
 }
 
 model Session {
@@ -158,6 +159,23 @@ model FileObject {
   @@unique([bucketId, objectKey])
   @@index([nodeId])
   @@index([bucketId])
+}
+
+// ─── API keys ─────────────────────────────────────────────────────────────────
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  name       String
+  keyHash    String    @unique
+  prefix     String
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+  @@index([keyHash])
 }
 
 // ─── Share links ──────────────────────────────────────────────────────────────

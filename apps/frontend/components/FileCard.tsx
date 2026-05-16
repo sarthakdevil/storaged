@@ -127,7 +127,7 @@ export function FileCard({
             type="button"
             aria-label="Open item actions"
             aria-expanded={menuOpen}
-            className="file-card-menu-trigger"
+            className={`p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition ${menuOpen ? "bg-slate-100 text-slate-600" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               setMenuOpen((v) => !v);
@@ -217,7 +217,9 @@ export function FileCard({
       </div>
 
       {/* Name */}
-      <p className="text-[13px] font-semibold text-slate-900 truncate mb-1 leading-snug">{node.name}</p>
+      <p className="text-[13px] font-semibold text-slate-900 line-clamp-2 break-words mb-1 leading-snug" title={node.name}>
+        {node.name}
+      </p>
 
       {/* Meta */}
       <p className="text-[11px] text-slate-400 leading-relaxed">

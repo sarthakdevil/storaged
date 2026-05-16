@@ -4,6 +4,8 @@ import morgan from "morgan";
 import healthRoutes from "./routes/healthRoutes";
 import authRoutes from "./routes/authRoutes";
 import storageRoutes from "./routes/storageRoutes";
+import apiKeyRoutes from "./routes/apiKeyRoutes";
+import v1Routes from "./routes/v1Routes";
 
 export const app = express();
 
@@ -26,3 +28,5 @@ app.use((req, res, next) => {
 app.use("/api", healthRoutes);
 app.use("/api", authRoutes);
 app.use("/api", storageRoutes);
+app.use("/api", apiKeyRoutes);
+app.use("/api/v1", v1Routes);
