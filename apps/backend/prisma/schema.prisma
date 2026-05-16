@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
 datasource db {
@@ -194,3 +194,4 @@ model ShareLink {
   @@index([nodeId])
   @@index([token])
 }
+
