@@ -95,6 +95,9 @@ export default function LoginPage() {
                   {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <div className="auth-inline-actions">
+                <Link href="/forgot-password">Forgot password?</Link>
+              </div>
             </div>
 
             <button type="submit" disabled={loading} className="auth-submit">

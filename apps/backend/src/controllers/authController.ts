@@ -1,9 +1,11 @@
 import { Request, Response } from "express";
 import {
   isAuthError,
+  requestPasswordReset,
   loginUser,
   logoutUser,
   registerUser,
+  resetPassword,
 } from "../services/authService";
 
 const getRequestMeta = (req: Request) => ({
@@ -63,6 +65,31 @@ export const logout = async (req: Request, res: Response) => {
   try {
     const result = await logoutUser({
       token: getBearerToken(req),
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    handleAuthError(error, res);
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const result = await requestPasswordReset({
+      email: req.body.email ?? "",
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    handleAuthError(error, res);
+  }
+};
+
+export const resetUserPassword = async (req: Request, res: Response) => {
+  try {
+    const result = await resetPassword({
+      token: req.body.token ?? "",
+      password: req.body.password ?? "",
     });
 
     res.status(200).json(result);

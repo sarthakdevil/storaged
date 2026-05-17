@@ -1390,6 +1390,17 @@ button:disabled {
   line-height: 1.4;
 }
 
+.auth-success {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .auth-form {
   display: grid;
   gap: 18px;
@@ -1477,6 +1488,23 @@ button:disabled {
 .auth-icon-button:hover {
   background: #f1f5f9;
   color: #334155;
+}
+
+.auth-inline-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.auth-inline-actions a {
+  color: #4f46e5;
+  font-size: 13px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.auth-inline-actions a:hover {
+  text-decoration: underline;
 }
 
 .auth-submit {
