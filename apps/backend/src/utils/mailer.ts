@@ -7,42 +7,36 @@ type PasswordResetEmailInput = {
   resetUrl: string;
 };
 
-const getMailFrom = () => {
-  return process.env.MAIL_FROM ?? "Storaged <no-reply@storaged.local>";
-};
+let transporter: nodemailer.Transporter | null = null;
 
-const createTransporter = () => {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+const getTransporter = async () => {
+  if (transporter) return transporter;
 
-  if (!host || !user || !pass) {
-    logger.warn("SMTP env vars are missing; password reset emails will be logged locally.");
-    return nodemailer.createTransport({ jsonTransport: true });
-  }
+  const testAccount = await nodemailer.createTestAccount();
 
-  return nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === "true",
+  logger.info("Ethereal test account created", { user: testAccount.user });
+
+  transporter = nodemailer.createTransport({
+    host: "smtp.ethereal.email",
+    port: 587,
+    secure: false,
     auth: {
-      user,
-      pass,
+      user: testAccount.user,
+      pass: testAccount.pass,
     },
   });
+
+  return transporter;
 };
 
-const transporter = createTransporter();
-
 export const sendPasswordResetEmail = async ({ to, name, resetUrl }: PasswordResetEmailInput) => {
-  const from = getMailFrom();
-  const subject = "Reset your Storaged password";
+  const t = await getTransporter();
   const recipientName = name?.trim() || "there";
 
-  const mail = {
-    from,
+  const info = await t.sendMail({
+    from: '"Storaged" <no-reply@storaged.local>',
     to,
-    subject,
+    subject: "Reset your Storaged password",
     text: [
       `Hi ${recipientName},`,
       "",
@@ -62,14 +56,15 @@ export const sendPasswordResetEmail = async ({ to, name, resetUrl }: PasswordRes
         <p>If you did not request this, you can ignore this email.</p>
       </div>
     `,
-  };
-
-  const info = await transporter.sendMail(mail);
-
-  logger.info("Password reset email prepared", {
-    to,
-    messageId: info.messageId,
   });
 
-  return info;
+  const previewUrl = nodemailer.getTestMessageUrl(info);
+
+  logger.info("Password reset email sent", {
+    to,
+    messageId: info.messageId,
+    previewUrl,
+  });
+
+  return { messageId: info.messageId, previewUrl };
 };
