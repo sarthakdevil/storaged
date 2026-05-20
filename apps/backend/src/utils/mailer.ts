@@ -60,6 +60,8 @@ export const sendPasswordResetEmail = async ({ to, name, resetUrl }: PasswordRes
 
   const previewUrl = nodemailer.getTestMessageUrl(info);
 
+  console.log(`Password reset email sent to: ${to} | Preview: ${previewUrl}`);
+
   logger.info("Password reset email sent", {
     to,
     messageId: info.messageId,
