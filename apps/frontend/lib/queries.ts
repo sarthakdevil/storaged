@@ -281,6 +281,102 @@ export function useUploadFile() {
   });
 }
 
+type InitiateUploadResponse = {
+  uploadSessionId: string;
+  partSizeBytes: number;
+};
+
+type UploadStatusResponse = {
+  id: string;
+  status: "INITIATED" | "UPLOADING" | "COMPLETING" | "COMPLETED" | "FAILED" | "ABORTED";
+  nodeId: string | null;
+  errorMessage: string | null;
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export function useMultipartUploadFile() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      parentId,
+      file,
+      onProgress,
+    }: {
+      parentId: string | null;
+      file: File;
+      onProgress?: (pct: number) => void;
+    }) => {
+      const init = await api.post<InitiateUploadResponse>("/uploads/initiate", {
+        fileName: file.name,
+        mimeType: file.type || undefined,
+        sizeBytes: file.size,
+        parentId: parentId ?? undefined,
+      });
+
+      const totalParts = Math.ceil(file.size / init.partSizeBytes);
+      const parts: { partNumber: number; etag: string }[] = [];
+
+      for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+        const start = (partNumber - 1) * init.partSizeBytes;
+        const end = Math.min(partNumber * init.partSizeBytes, file.size);
+        const chunk = file.slice(start, end);
+
+        const { url } = await api.post<{ url: string }>(
+          `/uploads/${init.uploadSessionId}/part-url`,
+          { partNumber },
+        );
+
+        const putRes = await fetch(url, {
+          method: "PUT",
+          body: chunk,
+        });
+
+        if (!putRes.ok) {
+          throw new Error(`Part ${partNumber} upload failed`);
+        }
+
+        const etag = putRes.headers.get("etag");
+        if (!etag) {
+          throw new Error(
+            "Upload succeeded but ETag header is missing. Configure bucket CORS to expose the ETag header.",
+          );
+        }
+
+        parts.push({ partNumber, etag });
+        onProgress?.(Math.round((parts.length / totalParts) * 100));
+      }
+
+      await api.post(`/uploads/${init.uploadSessionId}/complete`, { parts });
+
+      // Poll status until the worker finalizes and creates the file node.
+      const maxWaitMs = 10 * 60 * 1000;
+      const startTime = Date.now();
+
+      while (Date.now() - startTime < maxWaitMs) {
+        const status = await api.get<UploadStatusResponse>(`/uploads/${init.uploadSessionId}`);
+
+        if (status.status === "COMPLETED") {
+          return { uploadSessionId: init.uploadSessionId, nodeId: status.nodeId };
+        }
+
+        if (status.status === "FAILED" || status.status === "ABORTED") {
+          throw new Error(status.errorMessage ?? "Upload failed");
+        }
+
+        await sleep(1000);
+      }
+
+      throw new Error("Upload is taking too long to finalize. Please check again in a moment.");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: keys.nodes });
+      qc.invalidateQueries({ queryKey: keys.storageDashboard });
+    },
+  });
+}
+
 export function useCreateFolder() {
   const qc = useQueryClient();
   const { toast } = useToast();

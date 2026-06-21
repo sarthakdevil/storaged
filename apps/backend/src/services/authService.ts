@@ -286,6 +286,8 @@ export const requestPasswordReset = async ({ email }: PasswordResetRequestPayloa
   resetUrl.searchParams.set("token", token);
   resetUrl.searchParams.set("email", user.email);
 
+  console.log(`Password reset URL for ${user.email}: ${resetUrl.toString()}`);
+
   await sendPasswordResetEmail({
     to: user.email,
     name: user.name,

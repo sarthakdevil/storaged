@@ -3,11 +3,11 @@
 import { useState, useRef, DragEvent, ChangeEvent } from "react";
 import { X, Upload, File, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { useToast } from "./Toast";
-import { useUploadFile } from "../lib/queries";
+import { useMultipartUploadFile, useUploadFile } from "../lib/queries";
 import { formatSize } from "./FileCard";
 
 type FileStatus = "pending" | "uploading" | "done" | "error";
-type QueueItem = { file: File; status: FileStatus; error?: string };
+type QueueItem = { file: File; status: FileStatus; error?: string; progress?: number };
 
 type Props = {
   parentId: string | null;
@@ -17,6 +17,7 @@ type Props = {
 export function UploadModal({ parentId, onClose }: Props) {
   const { toast } = useToast();
   const upload = useUploadFile();
+  const multipartUpload = useMultipartUploadFile();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -49,20 +50,38 @@ export function UploadModal({ parentId, onClose }: Props) {
     setUploading(true);
     let successCount = 0;
 
+    const multipartThreshold = 450 * 1024 * 1024; // ~450MB; old endpoint is capped at 500MB
+
     for (let i = 0; i < queue.length; i++) {
       if (queue[i].status !== "pending") continue;
 
       setQueue((prev) => {
         const next = [...prev];
-        next[i] = { ...next[i], status: "uploading" };
+        next[i] = { ...next[i], status: "uploading", progress: 0 };
         return next;
       });
 
       try {
-        await upload.mutateAsync({ parentId, file: queue[i].file });
+        const file = queue[i].file;
+        if (file.size > multipartThreshold) {
+          await multipartUpload.mutateAsync({
+            parentId,
+            file,
+            onProgress: (pct) => {
+              setQueue((prev) => {
+                const next = [...prev];
+                if (!next[i]) return prev;
+                next[i] = { ...next[i], progress: pct };
+                return next;
+              });
+            },
+          });
+        } else {
+          await upload.mutateAsync({ parentId, file });
+        }
         setQueue((prev) => {
           const next = [...prev];
-          next[i] = { ...next[i], status: "done" };
+          next[i] = { ...next[i], status: "done", progress: 100 };
           return next;
         });
         successCount++;
@@ -70,7 +89,7 @@ export function UploadModal({ parentId, onClose }: Props) {
         const msg = err instanceof Error ? err.message : "Upload failed";
         setQueue((prev) => {
           const next = [...prev];
-          next[i] = { ...next[i], status: "error", error: msg };
+          next[i] = { ...next[i], status: "error", error: msg, progress: undefined };
           return next;
         });
         toast(`Failed: ${queue[i].file.name}`, "error");
@@ -124,7 +143,7 @@ export function UploadModal({ parentId, onClose }: Props) {
               Drop files here or{" "}
               <span className="text-indigo-600 underline underline-offset-2">browse</span>
             </p>
-            <p className="text-xs text-slate-400 mt-0.5">Up to 500 MB per file</p>
+            <p className="text-xs text-slate-400 mt-0.5">Up to 3 GB per file</p>
           </div>
           <input
             ref={inputRef}
@@ -143,7 +162,10 @@ export function UploadModal({ parentId, onClose }: Props) {
                 <File size={16} className="text-slate-400 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-800 truncate">{item.file.name}</p>
-                  <p className="text-xs text-slate-400">{formatSize(String(item.file.size))}</p>
+                  <p className="text-xs text-slate-400">
+                    {formatSize(String(item.file.size))}
+                    {item.status === "uploading" && typeof item.progress === "number" ? ` • ${item.progress}%` : ""}
+                  </p>
                 </div>
                 {item.status === "uploading" && (
                   <Loader2 size={16} className="animate-spin text-indigo-500 shrink-0" />

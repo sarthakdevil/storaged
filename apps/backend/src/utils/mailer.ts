@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { logger } from "./logger";
 
 type PasswordResetEmailInput = {
@@ -7,34 +7,13 @@ type PasswordResetEmailInput = {
   resetUrl: string;
 };
 
-let transporter: nodemailer.Transporter | null = null;
-
-const getTransporter = async () => {
-  if (transporter) return transporter;
-
-  const testAccount = await nodemailer.createTestAccount();
-
-  logger.info("Ethereal test account created", { user: testAccount.user });
-
-  transporter = nodemailer.createTransport({
-    host: "smtp.ethereal.email",
-    port: 587,
-    secure: false,
-    auth: {
-      user: testAccount.user,
-      pass: testAccount.pass,
-    },
-  });
-
-  return transporter;
-};
+const resend = new Resend(process.env.RESEND_KEY);
 
 export const sendPasswordResetEmail = async ({ to, name, resetUrl }: PasswordResetEmailInput) => {
-  const t = await getTransporter();
   const recipientName = name?.trim() || "there";
 
-  const info = await t.sendMail({
-    from: '"Storaged" <no-reply@storaged.local>',
+  const { data, error } = await resend.emails.send({
+    from: "onboarding@resend.dev",
     to,
     subject: "Reset your Storaged password",
     text: [
@@ -58,15 +37,13 @@ export const sendPasswordResetEmail = async ({ to, name, resetUrl }: PasswordRes
     `,
   });
 
-  const previewUrl = nodemailer.getTestMessageUrl(info);
+  if (error) {
+    logger.error("Failed to send password reset email", { to, error });
+    throw new Error(error.message);
+  }
 
-  console.log(`Password reset email sent to: ${to} | Preview: ${previewUrl}`);
+  console.log(`Password reset email sent to: ${to} | Message ID: ${data?.id}`);
+  logger.info("Password reset email sent", { to, messageId: data?.id });
 
-  logger.info("Password reset email sent", {
-    to,
-    messageId: info.messageId,
-    previewUrl,
-  });
-
-  return { messageId: info.messageId, previewUrl };
+  return data;
 };

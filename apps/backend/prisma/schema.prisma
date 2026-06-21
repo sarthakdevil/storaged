@@ -19,6 +19,15 @@ enum NodeType {
   FILE
 }
 
+enum UploadSessionStatus {
+  INITIATED
+  UPLOADING
+  COMPLETING
+  COMPLETED
+  FAILED
+  ABORTED
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 model User {
@@ -37,6 +46,7 @@ model User {
   deletedNodes Node[]      @relation("NodeDeletedBy")
   shareLinks   ShareLink[]
   apiKeys      ApiKey[]
+  uploadSessions UploadSession[]
 }
 
 model Session {
@@ -74,6 +84,7 @@ model Drive {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   nodes     Node[]
+  uploadSessions UploadSession[]
 
   @@unique([ownerId, name])
 }
@@ -156,6 +167,7 @@ model Bucket {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
   fileObjects  FileObject[]
+  uploadSessions UploadSession[]
 
   @@unique([providerName, bucketName])
 }
@@ -207,5 +219,45 @@ model ShareLink {
 
   @@index([nodeId])
   @@index([token])
+}
+
+// ─── Multipart/resumable uploads ─────────────────────────────────────────────
+
+model UploadSession {
+  id           String              @id @default(uuid())
+  status       UploadSessionStatus @default(INITIATED)
+
+  userId       String
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  driveId      String
+  drive        Drive               @relation(fields: [driveId], references: [id], onDelete: Cascade)
+
+  parentId     String?
+
+  fileName     String
+  mimeType     String?
+  sizeBytes    BigInt
+  partSizeBytes Int
+
+  bucketId     String
+  bucket       Bucket              @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  objectKey    String
+  uploadId     String
+
+  // Stored when client requests completion; worker uses this payload.
+  // Expected shape: [{ partNumber: number, etag: string }]
+  completedParts Json?
+
+  nodeId       String?
+
+  errorMessage String?
+  completedAt  DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([userId, status])
+  @@index([driveId])
+  @@index([bucketId, objectKey])
 }
 
