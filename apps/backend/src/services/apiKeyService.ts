@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "../utils/prisma";
 
 function generateRawKey(): string {

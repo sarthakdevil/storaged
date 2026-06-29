@@ -1,0 +1,7 @@
+ENVIRONMENT=development
+FRONTEND_ORIGIN=http://localhost:3000
+DATABASE_URL=postgresql://user:password@host:5432/storaged
+DIRECT_URL=postgresql://user:password@host:5432/storaged
+JWT_SECRET=replace-me
+RESEND_KEY=re_replace_me
+RESET_PASSWORD_URL=http://localhost:3000/reset-password

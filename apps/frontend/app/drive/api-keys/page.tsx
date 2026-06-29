@@ -24,10 +24,7 @@ import {
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "../../../lib/queries";
 import { ApiKey, CreatedApiKey } from "../../../lib/api";
 
-const API_BASE =
-  (typeof window !== "undefined"
-    ? window.location.origin.replace(/:\d+$/, ":3001")
-    : "http://localhost:3001") + "/api/v1";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787/api") + "/v1";
 
 const EXPIRY_OPTIONS = [
   { label: "No expiry", value: undefined },

@@ -3,8 +3,11 @@
   "private": true,
   "scripts": {
     "build": "turbo run build",
+    "build:cloudflare": "turbo run build:cloudflare",
     "dev": "turbo run dev",
+    "deploy:cloudflare": "turbo run deploy:cloudflare",
     "lint": "turbo run lint",
+    "preview:cloudflare": "turbo run preview:cloudflare",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
     "prisma:generate": "prisma generate",

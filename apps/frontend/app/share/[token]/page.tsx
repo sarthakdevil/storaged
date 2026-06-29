@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { use } from "react";
 import { Download, FileText, Loader2, AlertCircle, Eye } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787/api";
 
 type ShareData = {
   url: string;

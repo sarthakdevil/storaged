@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "worker:dev": "tsx watch src/worker.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "worker": "node dist/worker.js",
+    "dev": "npm run prisma:generate && wrangler dev",
+    "prisma:generate": "prisma generate && node scripts/patch-prisma-runtime.mjs",
+    "build:cloudflare": "npm run prisma:generate && wrangler deploy --dry-run",
+    "cf-typegen": "wrangler types src/worker-configuration.d.ts",
+    "deploy:cloudflare": "npm run prisma:generate && wrangler deploy",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "preview:cloudflare": "wrangler dev --local --port 8788",
     "lint": "eslint src/",
     "check-types": "tsc --noEmit"
   },
@@ -18,23 +20,17 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "dotenv": "^16.0.3",
-    "express": "^4.21.2",
-    "multer": "^2.1.1",
-    "nodemailer": "^8.0.7",
     "pg": "^8.20.0",
-    "pg-boss": "^10.3.2",
     "resend": "^6.12.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/multer": "^2.1.0",
+    "@cloudflare/workers-types": "^4.20260627.0",
     "@types/node": "^22.10.0",
-    "@types/nodemailer": "^8.0.0",
     "eslint": "^9.21.0",
     "eslint-config-prettier": "^10.0.0",
     "prisma": "^7.8.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
   }
 }

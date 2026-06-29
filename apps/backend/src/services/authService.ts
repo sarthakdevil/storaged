@@ -6,6 +6,8 @@ import {
 } from "../utils/auth";
 import { sendPasswordResetEmail } from "../utils/mailer";
 import { createHash, randomBytes } from "node:crypto";
+import { logger } from "../utils/logger";
+import { getRuntimeValue } from "../utils/runtimeEnv";
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
@@ -43,6 +45,22 @@ class AuthError extends Error {
   }
 }
 
+const handleDbError = (error: unknown, context: string): never => {
+  logger.error("Database error", { context, error });
+
+  const message = error instanceof Error ? error.message : String(error);
+
+  // Common Prisma/network indicators (include codes like P1001)
+  const isDbUnavailable = /Can't reach database server|failed to connect|P1001|ECONNREFUSED|ENOTFOUND/i.test(message);
+
+  if (isDbUnavailable) {
+    throw new AuthError("Service temporarily unavailable. Please try again later.", 503);
+  }
+
+  // Not a DB availability issue — rethrow original error
+  throw error as Error;
+};
+
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 const sanitizeName = (name?: string) => {
@@ -55,7 +73,7 @@ const validateEmail = (email: string) => {
 };
 
 const getAppUrl = () => {
-  const baseUrl = process.env.FRONTEND_URL ?? process.env.APP_URL ?? DEFAULT_APP_URL;
+  const baseUrl = getRuntimeValue("FRONTEND_URL") ?? getRuntimeValue("APP_URL") ?? DEFAULT_APP_URL;
   return baseUrl.replace(/\/$/, "");
 };
 
@@ -118,6 +136,7 @@ export const registerUser = async ({
   ipAddress,
   userAgent,
 }: AuthPayload) => {
+  try {
   const normalizedEmail = normalizeEmail(email);
 
   if (!validateEmail(normalizedEmail)) {
@@ -178,6 +197,10 @@ export const registerUser = async ({
   });
 
   return result;
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    handleDbError(error, "registerUser");
+  }
 };
 
 export const loginUser = async ({
@@ -186,6 +209,7 @@ export const loginUser = async ({
   ipAddress,
   userAgent,
 }: AuthPayload) => {
+  try {
   const normalizedEmail = normalizeEmail(email);
 
   if (!validateEmail(normalizedEmail)) {
@@ -235,24 +259,33 @@ export const loginUser = async ({
       expiresAt: session.expiresAt,
     },
   };
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    handleDbError(error, "loginUser");
+  }
 };
 
 export const logoutUser = async ({ token }: LogoutPayload) => {
-  if (!token) {
-    throw new AuthError("Authorization token is required.", 401);
+  try {
+    if (!token) {
+      throw new AuthError("Authorization token is required.", 401);
+    }
+
+    const deletedSession = await prisma.session.deleteMany({
+      where: { token },
+    });
+
+    if (deletedSession.count === 0) {
+      throw new AuthError("Session not found or already logged out.", 404);
+    }
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    handleDbError(error, "logoutUser");
   }
-
-  const deletedSession = await prisma.session.deleteMany({
-    where: { token },
-  });
-
-  if (deletedSession.count === 0) {
-    throw new AuthError("Session not found or already logged out.", 404);
-  }
-
-  return {
-    success: true,
-  };
 };
 
 export const isAuthError = (error: unknown): error is AuthError => {
@@ -260,6 +293,7 @@ export const isAuthError = (error: unknown): error is AuthError => {
 };
 
 export const requestPasswordReset = async ({ email }: PasswordResetRequestPayload) => {
+  try {
   const normalizedEmail = normalizeEmail(email);
 
   if (!validateEmail(normalizedEmail)) {
@@ -297,9 +331,14 @@ export const requestPasswordReset = async ({ email }: PasswordResetRequestPayloa
   return {
     message: "If an account exists for that email, a reset link has been sent.",
   };
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    handleDbError(error, "requestPasswordReset");
+  }
 };
 
 export const resetPassword = async ({ token, password }: PasswordResetPayload) => {
+  try {
   if (!token) {
     throw new AuthError("Reset token is required.", 400);
   }
@@ -341,4 +380,8 @@ export const resetPassword = async ({ token, password }: PasswordResetPayload) =
   return {
     message: "Your password has been reset. Please sign in again.",
   };
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    handleDbError(error, "resetPassword");
+  }
 };

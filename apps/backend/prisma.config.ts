@@ -9,8 +9,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    // Prisma no longer supports `directUrl` in schema files —
-    // prefer setting it here when needed (e.g. bypassing a pooler).
+    // Use DIRECT_URL only for CLI/Prisma operations per project requirement.
     url: process.env["DIRECT_URL"],
   },
 });

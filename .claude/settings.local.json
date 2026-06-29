@@ -9,7 +9,16 @@
       "WebSearch",
       "WebFetch(domain:help.backblaze.com)",
       "Bash(npm install *)",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(node -e ' *)",
+      "Bash(grep -rn \"queue\\\\|boss\\\\|uploadJobs\\\\|UPLOAD_FINALIZE\" src/services/)",
+      "Bash(cat src/queue/uploadJobs.ts)",
+      "Bash(grep -rhn \"from \\\\\"express\\\\\"\\\\|from \\\\\"multer\\\\\"\\\\|nodemailer\\\\|pg-boss\" src/services/)",
+      "Bash(git rm *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(rmdir src/controllers src/routes src/middleware src/queue)",
+      "Bash(npx wrangler *)",
+      "Bash(node -e \"console.log\\('CLOUDFLARE_API_TOKEN:', !!process.env.CLOUDFLARE_API_TOKEN, '| CLOUDFLARE_ACCOUNT_ID:', !!process.env.CLOUDFLARE_ACCOUNT_ID\\)\")"
     ]
   }
 }

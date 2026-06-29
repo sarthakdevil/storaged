@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { logger } from "./logger";
+import { getRuntimeValue } from "./runtimeEnv";
 
 type PasswordResetEmailInput = {
   to: string;
@@ -7,12 +8,28 @@ type PasswordResetEmailInput = {
   resetUrl: string;
 };
 
-const resend = new Resend(process.env.RESEND_KEY);
+let resend: Resend | null = null;
+let resendKey: string | undefined;
+
+const getResend = () => {
+  const key = getRuntimeValue("RESEND_KEY");
+
+  if (!key) {
+    throw new Error("RESEND_KEY is required to send email.");
+  }
+
+  if (!resend || resendKey !== key) {
+    resend = new Resend(key);
+    resendKey = key;
+  }
+
+  return resend;
+};
 
 export const sendPasswordResetEmail = async ({ to, name, resetUrl }: PasswordResetEmailInput) => {
   const recipientName = name?.trim() || "there";
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: "onboarding@resend.dev",
     to,
     subject: "Reset your Storaged password",
