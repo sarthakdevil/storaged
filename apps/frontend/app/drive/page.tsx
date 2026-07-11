@@ -145,14 +145,14 @@ export default function DrivePage() {
 
       {/* Breadcrumbs / Title */}
       {currentParentId === null ? (
-        <div className="drive-inner pt-10 pb-14">
+        <div className="drive-inner pt-14 pb-16">
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div>
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Workspace</p>
-              <h1 className="text-4xl font-extrabold text-indigo-600 tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+              <p className="text-sm uppercase tracking-[0.3em] text-slate-400 mb-3">Workspace</p>
+              <h1 className="text-5xl font-extrabold text-indigo-600 tracking-tight mb-4" style={{ fontFamily: "var(--font-display)" }}>
                 My Drive
               </h1>
-              <p className="text-sm text-slate-500 mt-3 max-w-xl leading-6">
+              <p className="text-base text-slate-500 max-w-xl leading-7">
                 Keep everything you need, right where you can find it.
               </p>
             </div>
@@ -182,27 +182,27 @@ export default function DrivePage() {
 
       <div className="drive-inner mt-8 pb-6">
         <div className="flex items-center justify-between gap-4">
-          <div className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+          <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
             <button
               onClick={() => setActiveTab("all")}
-              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+              className={`flex items-center gap-2 rounded-xl px-7 py-3 text-sm font-semibold transition ${
                 activeTab === "all"
                   ? "bg-indigo-500 text-white shadow-md"
                   : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
               }`}
             >
-              <HardDrive size={15} />
+              <HardDrive size={16} />
               All files
             </button>
             <button
               onClick={() => setActiveTab("favorites")}
-              className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+              className={`flex items-center gap-2 rounded-xl px-7 py-3 text-sm font-semibold transition ${
                 activeTab === "favorites"
                   ? "bg-amber-50 text-amber-700 shadow-md"
                   : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
               }`}
             >
-              <Star size={15} className={activeTab === "favorites" ? "fill-amber-400 text-amber-400" : ""} />
+              <Star size={16} className={activeTab === "favorites" ? "fill-amber-400 text-amber-400" : ""} />
               Favorites
             </button>
           </div>
@@ -247,11 +247,11 @@ export default function DrivePage() {
             </button>
           </div>
         ) : visible.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
-            <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center">
-              <HardDrive size={24} className="text-indigo-400" />
+          <div className="flex flex-col items-center justify-center min-h-[55vh] gap-5 text-center">
+            <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center">
+              <HardDrive size={36} className="text-indigo-400" />
             </div>
-            <p className="text-sm font-medium text-slate-600">
+            <p className="text-lg font-medium text-slate-600">
               {search
                 ? "No files match your search"
                 : activeTab === "favorites"
@@ -261,7 +261,7 @@ export default function DrivePage() {
             {!search && (
               <button
                 onClick={() => setShowUpload(true)}
-                className="text-sm text-indigo-600 hover:underline"
+                className="text-base text-indigo-600 hover:underline font-medium"
               >
                 Upload your first file
               </button>
