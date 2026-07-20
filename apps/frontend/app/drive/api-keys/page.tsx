@@ -86,11 +86,11 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
         <div className="px-6 pt-6 pb-5 border-b border-slate-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+              <div className="w-10 h-10 bg-neon-violet/10 rounded-xl flex items-center justify-center text-electric-indigo">
                 <Key size={18} />
               </div>
               <div>
-                <h2 className="font-bold text-slate-900 text-base">Create API Key</h2>
+                <h2 className="font-display font-bold text-slate-900 text-base">Create API Key</h2>
                 <p className="text-xs text-slate-500 font-medium">Generate a new authentication token</p>
               </div>
             </div>
@@ -109,13 +109,13 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
               placeholder="e.g. Production Environment"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white"
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-neon-violet focus:border-transparent transition-all bg-white"
             />
           </div>
 
           <div className="flex flex-col gap-2">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Expiration</label>
-            <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition-all">
+            <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-neon-violet focus-within:border-transparent transition-all">
               <Clock size={16} className="text-slate-400 shrink-0" />
               <select
                 value={expiresIn ?? ""}
@@ -140,7 +140,7 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
             <button
               type="submit"
               disabled={!name.trim() || createKey.isPending}
-              className="flex-1 flex items-center justify-center gap-2 py-3 px-6 min-h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-bold transition-all shadow-md shadow-indigo-500/20"
+              className="flex-1 flex items-center justify-center gap-2 py-3 px-6 min-h-11 rounded-xl bg-neon-violet hover:bg-[#8b5cf6] disabled:opacity-50 text-white text-sm font-bold transition-all shadow-md shadow-neon-violet/20"
             >
               {createKey.isPending ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
               Generate Key
@@ -163,7 +163,7 @@ function RevealKeyModal({ created, onClose }: { created: CreatedApiKey; onClose:
               <Check size={20} />
             </div>
             <div>
-              <h2 className="font-bold text-slate-900 text-base">Key Created Successfully</h2>
+              <h2 className="font-display font-bold text-slate-900 text-base">Key Created Successfully</h2>
               <p className="text-xs text-slate-500 font-medium">Copy your key immediately</p>
             </div>
           </div>
@@ -240,22 +240,22 @@ function ApiReference({ apiBase }: { apiBase: string }) {
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-8 py-6 text-left hover:bg-white/5 transition-all group relative overflow-hidden"
       >
-        <div className="absolute inset-0 bg-linear-to-r from-indigo-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-        
+        <div className="absolute inset-0 bg-linear-to-r from-neon-violet/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
         <div className="flex items-center gap-5 relative z-10">
-          <div className="w-12 h-12 bg-linear-to-br from-indigo-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-white/10">
-            <Terminal size={20} className="text-indigo-400" />
+          <div className="w-12 h-12 bg-linear-to-br from-neon-violet/20 to-electric-indigo/20 rounded-2xl flex items-center justify-center border border-white/10">
+            <Terminal size={20} className="text-neon-violet" />
           </div>
           <div>
-            <h3 className="font-extrabold text-white text-lg tracking-wide">API Documentation</h3>
+            <h3 className="font-display font-extrabold text-white text-lg tracking-wide">API Documentation</h3>
             <p className="text-sm text-indigo-200/60 mt-1 font-medium">{ENDPOINTS.length} endpoints available for integration</p>
           </div>
         </div>
         <div className="relative z-10 flex items-center gap-3">
-          <span className="text-sm font-bold text-indigo-400 hidden sm:block opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
+          <span className="text-sm font-bold text-neon-violet hidden sm:block opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
             {open ? "Collapse Docs" : "Explore API"}
           </span>
-          <div className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all duration-300 ${open ? "bg-indigo-500 text-white border-indigo-400 rotate-90 shadow-[0_0_15px_rgba(99,102,241,0.5)]" : "border-white/10 bg-white/5 text-slate-400"}`}>
+          <div className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-all duration-300 ${open ? "bg-neon-violet text-white border-neon-violet rotate-90 shadow-[0_0_15px_rgba(167,139,250,0.5)]" : "border-white/10 bg-white/5 text-slate-400"}`}>
             <ChevronRight size={18} />
           </div>
         </div>
@@ -267,8 +267,8 @@ function ApiReference({ apiBase }: { apiBase: string }) {
             <div className="px-8 py-8 grid lg:grid-cols-2 gap-8 bg-black/20">
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-indigo-500/20">
-                    <Lock size={14} className="text-indigo-400" />
+                  <div className="p-2 rounded-lg bg-neon-violet/20">
+                    <Lock size={14} className="text-neon-violet" />
                   </div>
                   <h4 className="text-xs font-bold text-white uppercase tracking-widest">Authentication</h4>
                 </div>
@@ -286,8 +286,8 @@ function ApiReference({ apiBase }: { apiBase: string }) {
 
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-purple-500/20">
-                    <Globe size={14} className="text-purple-400" />
+                  <div className="p-2 rounded-lg bg-electric-indigo/20">
+                    <Globe size={14} className="text-electric-indigo" />
                   </div>
                   <h4 className="text-xs font-bold text-white uppercase tracking-widest">Base URL</h4>
                 </div>
@@ -323,7 +323,7 @@ function ApiReference({ apiBase }: { apiBase: string }) {
                   )}
                   {ep.note && (
                     <div className="mt-2 inline-block">
-                      <span className="text-xs text-indigo-300/80 bg-indigo-500/10 rounded-lg px-3 py-1.5 font-mono border border-indigo-500/20">{ep.note}</span>
+                      <span className="text-xs text-neon-violet bg-neon-violet/10 rounded-lg px-3 py-1.5 font-mono border border-neon-violet/20">{ep.note}</span>
                     </div>
                   )}
                 </div>
@@ -341,11 +341,11 @@ function KeyRow({ apiKey }: { apiKey: ApiKey }) {
   const isExpired = apiKey.expiresAt ? new Date(apiKey.expiresAt) < new Date() : false;
 
   return (
-    <div className={`flex items-center gap-5 px-8 py-5 border-b border-slate-100/60 last:border-0 hover:bg-indigo-50/30 transition-all duration-300 group relative overflow-hidden ${isExpired ? "opacity-60 grayscale-[0.5]" : ""}`}>
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-      
-      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border transition-transform group-hover:scale-110 duration-300 ${isExpired ? "bg-slate-100 border-slate-200" : "bg-white border-indigo-100 shadow-indigo-100"}`}>
-        <Key size={18} className={isExpired ? "text-slate-400" : "text-indigo-600"} />
+    <div className={`flex items-center gap-5 px-8 py-5 border-b border-slate-100/60 last:border-0 hover:bg-neon-violet/5 transition-all duration-300 group relative overflow-hidden ${isExpired ? "opacity-60 grayscale-[0.5]" : ""}`}>
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-neon-violet opacity-0 group-hover:opacity-100 transition-opacity" />
+
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border transition-transform group-hover:scale-110 duration-300 ${isExpired ? "bg-slate-100 border-slate-200" : "bg-white border-neon-violet/20 shadow-neon-violet/10"}`}>
+        <Key size={18} className={isExpired ? "text-slate-400" : "text-electric-indigo"} />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -390,23 +390,23 @@ export default function ApiKeysPage() {
   return (
     <div className="drive-view flex flex-col min-h-full bg-surface relative pb-20">
       {/* Decorative background blurs */}
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-400/10 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-400/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-neon-violet/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-electric-indigo/10 rounded-full blur-[100px] pointer-events-none" />
 
       <header className="drive-toolbar relative z-20 border-b border-slate-200/50 bg-surface">
         <div className="drive-inner flex items-center justify-between gap-4 w-full py-2">
           <div className="flex items-center gap-5">
-            <div className="w-12 h-12 bg-linear-to-br from-slate-900 to-indigo-900 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-900/20">
+            <div className="w-12 h-12 bg-linear-to-br from-[#0a0a1a] to-[#3730a3] rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-900/20">
               <Key size={20} className="text-white" />
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-[0.35em] text-indigo-500 font-extrabold mb-0.5">Developer Settings</p>
-              <h1 className="text-2xl font-extrabold bg-linear-to-r from-slate-900 to-indigo-900 text-transparent bg-clip-text tracking-tight">API Keys</h1>
+              <p className="text-[11px] uppercase tracking-[0.35em] text-electric-indigo font-extrabold mb-0.5">Developer Settings</p>
+              <h1 className="font-display text-2xl font-extrabold bg-linear-to-r from-slate-900 to-[#4c1d95] text-transparent bg-clip-text tracking-tight">API Keys</h1>
             </div>
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="group flex items-center justify-center gap-3 px-8 py-3.5 min-h-12 rounded-xl bg-linear-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold transition-all shadow-[0_8px_20px_-6px_rgba(79,70,229,0.5)] hover:shadow-[0_12px_25px_-6px_rgba(79,70,229,0.6)] hover:-translate-y-0.5"
+            className="group flex items-center justify-center gap-3 px-8 py-3.5 min-h-12 rounded-xl bg-neon-violet hover:bg-[#8b5cf6] text-white text-sm font-bold transition-all shadow-[0_8px_20px_-6px_rgba(167,139,250,0.5)] hover:shadow-[0_12px_25px_-6px_rgba(167,139,250,0.6)] hover:-translate-y-0.5"
           >
             <Plus size={18} className="transition-transform group-hover:rotate-90 duration-300" />
             Generate New Key
@@ -418,7 +418,7 @@ export default function ApiKeysPage() {
         {/* Premium Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[
-            { icon: Sparkles, label: "Active Tokens", value: activeKeys,   bg: "bg-linear-to-br from-indigo-500 to-blue-600", border: "border-indigo-100" },
+            { icon: Sparkles, label: "Active Tokens", value: activeKeys,   bg: "bg-linear-to-br from-neon-violet to-electric-indigo", border: "border-neon-violet/20" },
             { icon: Shield,   label: "Total Created", value: keys.length, bg: "bg-linear-to-br from-slate-700 to-slate-900", border: "border-slate-200" },
             { icon: Zap,      label: "Recently Used", value: keys.filter(k => k.lastUsedAt).length, bg: "bg-linear-to-br from-emerald-500 to-teal-600", border: "border-emerald-100" },
           ].map(({ icon: Icon, label, value, bg, border }) => (
@@ -438,24 +438,24 @@ export default function ApiKeysPage() {
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
           <div className="px-8 py-6 border-b border-slate-100/60 flex items-center justify-between bg-white/50">
             <div>
-              <h2 className="text-lg font-extrabold text-slate-900">Authentication Keys</h2>
+              <h2 className="font-display text-lg font-extrabold text-slate-900">Authentication Keys</h2>
               <p className="text-sm text-slate-500 font-medium mt-1">Manage your programmatic access tokens</p>
             </div>
             <div className="flex items-center gap-2 bg-slate-100/80 px-4 py-2 rounded-xl border border-slate-200/60">
-              <Key size={14} className="text-indigo-500" />
+              <Key size={14} className="text-electric-indigo" />
               <span className="text-sm font-bold text-slate-700">{keys.length} Tokens</span>
             </div>
           </div>
 
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
-              <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+              <div className="w-12 h-12 border-4 border-neon-violet/20 border-t-neon-violet rounded-full animate-spin" />
               <span className="text-sm font-bold text-slate-500 animate-pulse">Loading securely…</span>
             </div>
           ) : keys.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 gap-5 text-center px-6">
-              <div className="w-20 h-20 bg-linear-to-br from-indigo-50 to-purple-50 rounded-2xl flex items-center justify-center border border-indigo-100 shadow-inner">
-                <Key size={32} className="text-indigo-400" />
+              <div className="w-20 h-20 bg-linear-to-br from-neon-violet/10 to-electric-indigo/10 rounded-2xl flex items-center justify-center border border-neon-violet/20 shadow-inner">
+                <Key size={32} className="text-neon-violet" />
               </div>
               <div>
                 <p className="text-lg font-extrabold text-slate-900">No active keys found</p>
@@ -463,7 +463,7 @@ export default function ApiKeysPage() {
               </div>
               <button
                 onClick={() => setShowCreate(true)}
-                className="mt-4 flex items-center justify-center gap-3 px-8 py-3.5 min-h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold transition-all shadow-lg shadow-slate-900/20 hover:-translate-y-0.5"
+                className="mt-4 flex items-center justify-center gap-3 px-8 py-3.5 min-h-12 rounded-xl bg-[#0a0a1a] hover:bg-[#1a1a2e] text-white text-sm font-bold transition-all shadow-lg shadow-slate-900/20 hover:-translate-y-0.5"
               >
                 <Plus size={18} />
                 Generate First Key

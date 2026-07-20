@@ -1,16 +1,14 @@
 "use client";
 
 import { ReactNode } from "react";
-import { QueryProvider } from "./QueryProvider";
-import { AuthProvider } from "./AuthContext";
-import { ToastProvider } from "./Toast";
+import { Providers as SharedProviders } from "@repo/ui";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787/api";
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <QueryProvider>
-      <AuthProvider>
-        <ToastProvider>{children}</ToastProvider>
-      </AuthProvider>
-    </QueryProvider>
+    <SharedProviders apiUrl={API_URL}>
+      {children}
+    </SharedProviders>
   );
 }

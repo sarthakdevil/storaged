@@ -4,7 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { HardDrive, Eye, EyeOff, Loader2 } from "lucide-react";
-import { useAuth } from "../../components/AuthContext";
+import { useAuth } from "@repo/ui";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

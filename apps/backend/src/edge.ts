@@ -42,9 +42,11 @@ import {
   uploadFile,
 } from "./services/storageService";
 import { createApiKey, listApiKeys, revokeApiKey } from "./services/apiKeyService";
-import { prisma, configurePrisma } from "./utils/prisma";
+import { prisma, configurePrisma, disconnectPrisma } from "./utils/prisma";
 import { configureRuntimeEnv } from "./utils/runtimeEnv";
-import { createHash } from "node:crypto";
+import { requireAuth, requireApiKey, getBearerToken } from "@repo/auth";
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
 
 type Env = {
   ENVIRONMENT?: string;
@@ -103,11 +105,14 @@ const json = (body: unknown, init: ResponseInit = {}) =>
   });
 
 const getCorsHeaders = (request: Request, env: Env): HeadersInit => {
-  const origin = request.headers.get("origin");
-  const allowedOrigin = "*";
+  const origin = request.headers.get("origin") ?? "";
+  const allowedOrigin = env.FRONTEND_ORIGIN ?? "*";
+
+  const isLocal = origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
+  const isAllowed = origin === allowedOrigin || isLocal;
 
   return {
-    "access-control-allow-origin": origin === allowedOrigin ? origin : allowedOrigin,
+    "access-control-allow-origin": isAllowed ? origin : allowedOrigin,
     "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,x-api-key",
     "access-control-max-age": "86400",
@@ -161,64 +166,11 @@ const parseMultipartFile = async (request: Request) => {
 
 const stringValue = (value: unknown) => (typeof value === "string" && value ? value : undefined);
 
-const getBearerToken = (request: Request) => {
-  const authHeader = request.headers.get("authorization");
-  return authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : "";
-};
 
 const getRequestMeta = (request: Request) => ({
   ipAddress: request.headers.get("cf-connecting-ip") ?? undefined,
   userAgent: request.headers.get("user-agent") ?? undefined,
 });
-
-const requireAuth = async (request: Request) => {
-  const token = getBearerToken(request);
-
-  if (!token) {
-    throw { statusCode: 401, message: "Authorization token is required." };
-  }
-
-  const session = await prisma.session.findUnique({
-    where: { token },
-    select: { userId: true, expiresAt: true },
-  });
-
-  if (!session || session.expiresAt < new Date()) {
-    throw { statusCode: 401, message: "Session expired or invalid." };
-  }
-
-  return session.userId;
-};
-
-const requireApiKey = async (request: Request, ctx: ExecutionContext) => {
-  const authHeader = request.headers.get("authorization");
-  const headerKey = request.headers.get("x-api-key");
-  const rawKey = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : headerKey;
-
-  if (!rawKey) {
-    throw {
-      statusCode: 401,
-      message: "API key required. Provide via Authorization: Bearer <key> or X-API-Key header.",
-    };
-  }
-
-  const keyHash = createHash("sha256").update(rawKey).digest("hex");
-  const apiKey = await prisma.apiKey.findUnique({
-    where: { keyHash },
-    select: { id: true, userId: true, expiresAt: true },
-  });
-
-  if (!apiKey) {
-    throw { statusCode: 401, message: "Invalid API key." };
-  }
-
-  if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
-    throw { statusCode: 401, message: "API key has expired." };
-  }
-
-  ctx.waitUntil(prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } }));
-  return apiKey.userId;
-};
 
 const route = (
   method: string,
@@ -305,40 +257,40 @@ const routes: Route[] = [
   }),
 
   route("POST", "/api/storage/connections", async ({ request }) => {
-    await requireAuth(request);
+    await requireAuth(request, prisma);
     return json(await createStorageConnection(await bodyJson(request)), { status: 201 });
   }),
   route("GET", "/api/storage/connections", async ({ request, url }) => {
-    await requireAuth(request);
+    await requireAuth(request, prisma);
     return json(await listStorageConnections(getPaginationOptions(url)));
   }),
   route("GET", "/api/storage/dashboard", async ({ request, url }) => {
-    await requireAuth(request);
+    await requireAuth(request, prisma);
     return json(await getStorageDashboard(getPaginationOptions(url)));
   }),
   route("GET", "/api/storage/connections/:id", async ({ request, params }) => {
-    await requireAuth(request);
+    await requireAuth(request, prisma);
     return json(await getStorageConnection(params.id));
   }),
   route("PATCH", "/api/storage/connections/:id", async ({ request, params }) => {
-    await requireAuth(request);
+    await requireAuth(request, prisma);
     return json(await updateStorageConnection({ id: params.id, input: await bodyJson(request) }));
   }),
   route("DELETE", "/api/storage/connections/:id", async ({ request, params }) => {
-    await requireAuth(request);
+    await requireAuth(request, prisma);
     return json(await deleteStorageConnection(params.id));
   }),
 
   route("GET", "/api/files", async ({ request, url }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await listFiles({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
   }),
   route("GET", "/api/files/trash", async ({ request, url }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await listTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
   }),
   route("POST", "/api/files/folders", async ({ request }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ name?: string; driveId?: string; parentId?: string }>(request);
     return json(
       await createFolder({ userId, name: body.name ?? "", driveId: body.driveId, parentId: body.parentId }),
@@ -346,54 +298,54 @@ const routes: Route[] = [
     );
   }),
   route("POST", "/api/files", async ({ request }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const file = await parseMultipartFile(request);
     return json(await uploadFile({ userId, ...file }), { status: 201 });
   }),
   route("GET", "/api/files/:nodeId/preview", async ({ request, url, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const expiresIn = Number(url.searchParams.get("expiresIn") ?? 900);
     return json(await previewFile({ userId, nodeId: params.nodeId, expiresIn }));
   }),
   route("GET", "/api/files/:nodeId/download", async ({ request, url, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
     return json(await downloadFile({ userId, nodeId: params.nodeId, expiresIn }));
   }),
   route("PATCH", "/api/files/:nodeId", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ name?: string; description?: string; isFavorite?: boolean; tags?: string[] }>(request);
     return json(await updateNodeDetails({ userId, nodeId: params.nodeId, ...body }));
   }),
   route("POST", "/api/files/:nodeId/trash", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await trashNode({ userId, nodeId: params.nodeId }));
   }),
   route("POST", "/api/files/:nodeId/restore", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await restoreNode({ userId, nodeId: params.nodeId }));
   }),
   route("DELETE", "/api/files/:nodeId", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await deleteNode({ userId, nodeId: params.nodeId }));
   }),
   route("POST", "/api/files/:nodeId/shares", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ expiresIn?: number }>(request);
     return json(await createShareLink({ userId, nodeId: params.nodeId, expiresIn: body.expiresIn }), { status: 201 });
   }),
   route("GET", "/api/files/:nodeId/shares", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await listShareLinks({ userId, nodeId: params.nodeId }));
   }),
   route("DELETE", "/api/shares/:linkId", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await revokeShareLink({ userId, linkId: params.linkId }));
   }),
   route("GET", "/api/share/:token", async ({ params }) => json(await resolveShareLink(params.token))),
 
   route("POST", "/api/uploads/initiate", async ({ request }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{
       fileName?: string;
       mimeType?: string;
@@ -414,11 +366,11 @@ const routes: Route[] = [
     );
   }),
   route("GET", "/api/uploads/:id", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await getUploadSessionStatus({ userId, uploadSessionId: params.id }));
   }),
   route("POST", "/api/uploads/:id/part-url", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ partNumber?: number }>(request);
     return json(
       await getUploadPartUrl({
@@ -429,37 +381,37 @@ const routes: Route[] = [
     );
   }),
   route("GET", "/api/uploads/:id/parts", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await listUploadedParts({ userId, uploadSessionId: params.id }));
   }),
   route("POST", "/api/uploads/:id/complete", async ({ request, params, ctx, env }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ parts?: { partNumber: number; etag: string }[] }>(request);
     const result = await requestUploadCompletion({ userId, uploadSessionId: params.id, parts: body.parts ?? [] });
     await scheduleFinalize(env, ctx, params.id);
     return json(result, { status: 202 });
   }),
   route("POST", "/api/uploads/:id/abort", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await abortUpload({ userId, uploadSessionId: params.id }));
   }),
 
   route("GET", "/api/apikeys", async ({ request }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await listApiKeys(userId));
   }),
   route("POST", "/api/apikeys", async ({ request }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ name?: string; expiresIn?: number }>(request);
     return json(await createApiKey({ userId, name: body.name ?? "", expiresIn: body.expiresIn }), { status: 201 });
   }),
   route("DELETE", "/api/apikeys/:keyId", async ({ request, params }) => {
-    const userId = await requireAuth(request);
+    const userId = await requireAuth(request, prisma);
     return json(await revokeApiKey({ userId, keyId: params.keyId }));
   }),
 
   route("GET", "/api/v1/files", async ({ request, url, ctx }) => {
-    const userId = await requireApiKey(request, ctx);
+    const userId = await requireApiKey(request, prisma, ctx);
     let result = await listFiles({ userId });
     const parentId = url.searchParams.get("parentId");
     const type = url.searchParams.get("type");
@@ -470,7 +422,7 @@ const routes: Route[] = [
     return json({ data: result, total: result.length });
   }),
   route("GET", "/api/v1/files/:id", async ({ request, params, ctx }) => {
-    const userId = await requireApiKey(request, ctx);
+    const userId = await requireApiKey(request, prisma, ctx);
     const node = await prisma.node.findFirst({
       where: { id: params.id, isDeleted: false, drive: { ownerId: userId } },
       include: { tags: { include: { tag: true } } },
@@ -493,29 +445,31 @@ const routes: Route[] = [
     });
   }),
   route("POST", "/api/v1/folders", async ({ request, ctx }) => {
-    const userId = await requireApiKey(request, ctx);
+    const userId = await requireApiKey(request, prisma, ctx);
     const body = await bodyJson<{ name?: string; parentId?: string }>(request);
     return json(await createFolder({ userId, name: body.name ?? "", parentId: body.parentId }), { status: 201 });
   }),
   route("POST", "/api/v1/files/upload", async ({ request, ctx }) => {
-    const userId = await requireApiKey(request, ctx);
+    const userId = await requireApiKey(request, prisma, ctx);
     const file = await parseMultipartFile(request);
     return json(await uploadFile({ userId, ...file }), { status: 201 });
   }),
   route("GET", "/api/v1/files/:id/download", async ({ request, url, params, ctx }) => {
-    const userId = await requireApiKey(request, ctx);
+    const userId = await requireApiKey(request, prisma, ctx);
     const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
     return json(await downloadFile({ userId, nodeId: params.id, expiresIn }));
   }),
   route("PATCH", "/api/v1/files/:id", async ({ request, params, ctx }) => {
-    const userId = await requireApiKey(request, ctx);
+    const userId = await requireApiKey(request, prisma, ctx);
     const body = await bodyJson<{ name?: string; description?: string }>(request);
     return json(await updateNodeDetails({ userId, nodeId: params.id, ...body }));
   }),
   route("DELETE", "/api/v1/files/:id", async ({ request, params, ctx }) => {
-    const userId = await requireApiKey(request, ctx);
+    const userId = await requireApiKey(request, prisma, ctx);
     return json(await deleteNode({ userId, nodeId: params.id }));
   }),
+
+  // ── Admin — Stats ─────────────────────────────────────────────────────────
 ];
 
 const configureForRequest = (env: Env) => {
@@ -568,6 +522,8 @@ export default {
       return withCors(json({ message: "Not found." }, { status: 404 }), request, env);
     } catch (error) {
       return withCors(handleError(error), request, env);
+    } finally {
+      ctx.waitUntil(disconnectPrisma());
     }
   },
 

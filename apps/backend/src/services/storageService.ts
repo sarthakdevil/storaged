@@ -66,6 +66,12 @@ const getProviderLabel = (provider: StorageProvider) => {
       return "Storj";
     case "cloudflare-r2":
       return "Cloudflare R2";
+    case "idrive-e2":
+      return "IDrive e2";
+    case "filebase":
+      return "Filebase";
+    case "oracle-oci":
+      return "Oracle Cloud Storage";
     default:
       return provider;
   }
@@ -128,6 +134,29 @@ const getProviderDefaults = (
           input.endpointUrl?.trim() ??
           `https://${input.accountId?.trim()}.r2.cloudflarestorage.com`,
         region: input.region?.trim() ?? "auto",
+        forcePathStyle: true,
+      };
+    }
+    case "idrive-e2": {
+      return {
+        endpointUrl: input.endpointUrl!.trim(),
+        region: input.region?.trim() ?? "auto",
+        forcePathStyle: true,
+      };
+    }
+    case "filebase": {
+      return {
+        endpointUrl: input.endpointUrl?.trim() ?? "https://s3.filebase.io",
+        region: input.region?.trim() ?? "auto",
+        forcePathStyle: true,
+      };
+    }
+    case "oracle-oci": {
+      return {
+        endpointUrl:
+          input.endpointUrl?.trim() ??
+          `https://${input.accountId?.trim()}.compat.objectstorage.${input.region}.oci.customer-oci.com`,
+        region: input.region!,
         forcePathStyle: true,
       };
     }

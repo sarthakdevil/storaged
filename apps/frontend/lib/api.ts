@@ -1,3 +1,38 @@
+import type {
+  DriveNode,
+  TrashNode,
+  NodeTag,
+  StorageProvider,
+  StorageConnection,
+  StorageConnectionConfig,
+  StorageConnectionInput,
+  StorageConnectionsPage,
+  StorageDashboard,
+  AuthUser,
+  ApiKey,
+  CreatedApiKey,
+  ShareLink,
+} from "@repo/types";
+
+// Re-export all types so existing imports from "./api" continue to work
+export type {
+  DriveNode,
+  TrashNode,
+  NodeTag,
+  StorageProvider,
+  StorageConnection,
+  StorageConnectionConfig,
+  StorageConnectionInput,
+  StorageConnectionsPage,
+  StorageDashboard,
+  AuthUser,
+  ApiKey,
+  CreatedApiKey,
+  ShareLink,
+};
+
+// ─── API URL ─────────────────────────────────────────────────────────────────
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8787/api";
 
 function getToken(): string | null {
@@ -41,129 +76,4 @@ export const api = {
 
   upload: <T>(path: string, formData: FormData) =>
     request<T>(path, { method: "POST", body: formData }),
-};
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export type NodeTag = { id: string; name: string; color: string | null };
-
-export type DriveNode = {
-  id: string;
-  driveId: string;
-  parentId: string | null;
-  type: "FILE" | "FOLDER";
-  name: string;
-  path: string;
-  description: string | null;
-  sizeBytes: string;
-  mimeType: string | null;
-  isFavorite: boolean;
-  tags: NodeTag[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type TrashNode = {
-  id: string;
-  driveId: string;
-  type: "FILE" | "FOLDER";
-  originalName: string | null;
-  originalPath: string | null;
-  sizeBytes: string;
-  mimeType: string | null;
-  deletedAt: string | null;
-  createdAt: string;
-};
-
-export type StorageProvider = "s3" | "supabase" | "backblaze" | "storj" | "cloudflare-r2";
-
-export type StorageConnectionConfig = {
-  accessKeyId?: string;
-  endpointUrl?: string;
-  region?: string;
-  projectRef?: string;
-  accountId?: string;
-  forcePathStyle?: boolean;
-  quotaGb?: number;
-};
-
-export type StorageConnection = {
-  id: string;
-  providerName: StorageProvider;
-  providerLabel?: string;
-  displayName: string | null;
-  bucketName: string;
-  config: StorageConnectionConfig;
-  isActive: boolean;
-  status: "connected" | "limited" | "error" | "inactive";
-  statusMessage: string;
-  usedBytes: string;
-  totalBytes: string | null;
-  quotaBytes: string | null;
-  availableBytes: string | null;
-  activeObjects: number;
-  totalObjects: number;
-  sizeEstimateSource: string;
-  lastCheckedAt: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type StorageConnectionInput = {
-  provider: StorageProvider;
-  displayName?: string;
-  bucketName: string;
-  accessKeyId: string;
-  secretAccessKey?: string;
-  endpointUrl?: string;
-  region?: string;
-  projectRef?: string;
-  accountId?: string;
-  forcePathStyle?: boolean;
-  isActive?: boolean;
-  quotaGb?: number;
-};
-
-export type StorageConnectionsPage = {
-  items: StorageConnection[];
-  nextCursor: string | null;
-};
-
-export type StorageDashboard = {
-  totalStorages: number;
-  activeStorages: number;
-  connectedStorages: number;
-  erroredStorages: number;
-  usedBytes: string;
-  totalBytes: string | null;
-  quotaBytes: string | null;
-  availableBytes: string | null;
-  totalObjects: number;
-  activeObjects: number;
-  totalConnections: number;
-  nextCursor: string | null;
-  storages: StorageConnection[];
-};
-
-export type AuthUser = { id: string; email: string; name: string | null };
-
-export type ShareLink = {
-  id: string;
-  token: string;
-  nodeId: string;
-  expiresAt: string | null;
-  createdAt: string;
-};
-
-export type ApiKey = {
-  id: string;
-  name: string;
-  prefix: string; // first 14 chars, safe to display
-  lastUsedAt: string | null;
-  expiresAt: string | null;
-  createdAt: string;
-};
-
-export type CreatedApiKey = ApiKey & {
-  key: string; // full key — returned only on creation
 };

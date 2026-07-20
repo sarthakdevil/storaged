@@ -11,15 +11,26 @@ declare global {
 
 let prismaClient: PrismaClient | undefined = globalThis.__prisma__;
 let prismaConnectionString: string | undefined;
+let currentPool: Pool | undefined;
 
 export const configurePrisma = (connectionString: string) => {
   if (prismaClient && prismaConnectionString === connectionString) {
     return prismaClient;
   }
 
+  if (currentPool) {
+    currentPool.end().catch(() => {});
+  }
+
   logger.info("Initializing Prisma database adapter");
 
-  const pool = new Pool({ connectionString });
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+    idleTimeoutMillis: 100,
+  });
+  currentPool = pool;
+  
   const adapter = new PrismaPg(pool);
   prismaClient = new PrismaClient({ adapter });
   prismaConnectionString = connectionString;
@@ -29,6 +40,23 @@ export const configurePrisma = (connectionString: string) => {
   }
 
   return prismaClient;
+};
+
+export const disconnectPrisma = async () => {
+  if (prismaClient) {
+    try {
+      await prismaClient.$disconnect();
+    } catch {}
+    prismaClient = undefined;
+  }
+  if (currentPool) {
+    try {
+      await currentPool.end();
+    } catch {}
+    currentPool = undefined;
+  }
+  prismaConnectionString = undefined;
+  globalThis.__prisma__ = undefined;
 };
 
 export const getPrisma = () => {

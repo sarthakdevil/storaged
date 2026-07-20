@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, Loader2, Download, ExternalLink, AlertCircle } from "lucide-react";
+import { Loader2, Download, ExternalLink, AlertCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DriveNode, api } from "../lib/api";
-import { formatSize } from "./FileCard";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Button, formatSize } from "@repo/ui";
 
 type PreviewResponse = {
   url: string;
@@ -63,77 +63,71 @@ export function PreviewModal({ node, onClose }: Props) {
         const res = await api.get<PreviewResponse>(`/files/${nodeId}/preview`);
         setPreviewUrl(res.url);
 
-        if (isMarkdown || isText) {
-          const text = await fetch(res.url).then((r) => r.text());
+        if (isText || isMarkdown) {
+          const textRes = await fetch(res.url);
+          if (!textRes.ok) throw new Error("Failed to load text preview content");
+          const text = await textRes.text();
           setContent(text);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Preview failed");
+        console.error(err);
+        setError("Could not load preview. You can still download the file.");
       } finally {
         setLoading(false);
       }
     };
 
     loadPreview();
-  }, [node, nodeId, isMarkdown, isText]);
+  }, [node, nodeId, isText, isMarkdown]);
 
   if (!node) return null;
 
-  async function handleDownload() {
-    if (!node) return;
-    try {
-      const res = await api.get<{ url: string }>(`/files/${nodeId}/download`);
-      window.open(res.url, "_blank");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Download failed");
+  const handleDownload = () => {
+    if (previewUrl) {
+      window.open(previewUrl, "_blank");
     }
-  }
+  };
 
   return (
-    <div className="fixed top-18 left-68 right-0 bottom-0 z-50 p-6 bg-slate-950/20 backdrop-blur-2xl">
-      <div className="flex h-full w-full flex-col overflow-hidden rounded-xl bg-white shadow-[0_28px_70px_rgba(15,23,42,0.24)] ring-1 ring-slate-200/80">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white/90 backdrop-blur-md shrink-0">
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="w-full max-w-4xl sm:max-w-4xl h-[80vh] p-0 overflow-hidden rounded-2xl border border-slate-100 shadow-2xl flex flex-col">
+        <DialogHeader className="px-6 py-4 border-b border-slate-100 flex flex-row items-center justify-between text-left space-y-0 shrink-0">
           <div>
-            <h2 className="text-base font-semibold text-slate-900 truncate">Preview</h2>
-            <p className="text-xs text-slate-500">
+            <DialogTitle className="font-display text-base font-semibold text-slate-900 truncate">Preview</DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 mt-1">
               {node.name} · {formatSize(node.sizeBytes)}
-            </p>
+            </DialogDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pr-6">
             {previewUrl && (
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => window.open(previewUrl, "_blank")}
-                className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
+                className="p-2 h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-500"
                 aria-label="Open in new tab"
               >
                 <ExternalLink size={16} />
-              </button>
+              </Button>
             )}
-            <button
+            <Button
+              variant="ghost"
               onClick={handleDownload}
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
+              className="p-2 h-9 w-9 rounded-lg hover:bg-slate-100 text-slate-500"
               aria-label="Download"
             >
               <Download size={16} />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
-              aria-label="Close"
-            >
-              <X size={18} />
-            </button>
+            </Button>
           </div>
-        </div>
+        </DialogHeader>
 
-        <div className="flex-1 min-h-0 p-6 bg-slate-50/95 backdrop-blur-sm">
+        <div className="flex-1 min-h-0 p-6 bg-slate-50/95">
           {loading ? (
             <div className="flex h-full items-center justify-center text-slate-500">
               <Loader2 size={20} className="animate-spin" />
               <span className="ml-2 text-sm">Loading preview...</span>
             </div>
           ) : error ? (
-            <div className="flex items-center gap-2 text-sm text-red-500">
+            <div className="flex items-center gap-2 text-sm text-red-500 justify-center h-full">
               <AlertCircle size={16} /> {error}
             </div>
           ) : isPdf && previewUrl ? (
@@ -159,12 +153,12 @@ export function PreviewModal({ node, onClose }: Props) {
               )}
             </div>
           ) : (
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-slate-500 flex h-full items-center justify-center">
               Preview not available for this file type.
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

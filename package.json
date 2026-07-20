@@ -10,6 +10,8 @@
     "preview:cloudflare": "turbo run preview:cloudflare",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
+    "db:generate": "npm run db:generate --workspace=@repo/db",
+    "db:migrate": "npm run db:migrate --workspace=@repo/db",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },

@@ -3,12 +3,21 @@
   "version": "0.0.0",
   "private": true,
   "exports": {
-    "./*": "./src/*.tsx"
+    ".": "./src/index.ts",
+    "./designsystem/globals.css": "./src/designsystem/globals.css",
+    "./toast": "./src/Toast.tsx",
+    "./confirm-dialog": "./src/ConfirmDialog.tsx",
+    "./auth-context": "./src/AuthContext.tsx",
+    "./query-provider": "./src/QueryProvider.tsx",
+    "./providers": "./src/Providers.tsx"
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
-    "generate:component": "turbo gen react-component",
     "check-types": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
@@ -20,7 +29,18 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "@radix-ui/react-dialog": "^1.1.6",
+    "@radix-ui/react-dropdown-menu": "^2.1.6",
+    "@radix-ui/react-slot": "^1.1.2",
+    "@radix-ui/react-tooltip": "^1.1.8",
+    "@repo/types": "*",
+    "@tanstack/react-query": "^5.100.9",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.14.0",
+    "radix-ui": "^1.6.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0"
   }
 }

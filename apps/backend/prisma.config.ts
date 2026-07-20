@@ -4,12 +4,13 @@ import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
 export default defineConfig({
-  schema: "prisma/schema.prisma",
+  schema: "../../packages/db/prisma/schema.prisma",
   migrations: {
-    path: "prisma/migrations",
+    path: "../../packages/db/prisma/migrations",
   },
   datasource: {
     // Use DIRECT_URL only for CLI/Prisma operations per project requirement.
     url: process.env["DIRECT_URL"],
   },
 });
+

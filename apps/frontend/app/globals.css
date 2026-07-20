@@ -1,55 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
-@import "tailwindcss";
+@import "@repo/ui/designsystem/globals.css";
 
-@theme {
-  --color-primary: #6366f1;
-  --color-primary-dark: #4f46e5;
-  --color-sidebar-bg: #071025;
-  --color-sidebar-hover: #0b1828;
-  --color-surface: #f8fafc;
-  --color-ink: #0f172a;
-  --color-muted: #64748b;
-  --color-card: #ffffff;
-  --color-card-border: #e2e8f0;
-  --color-card-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+@source "./**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
 
-  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Space Grotesk", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  letter-spacing: 0;
-}
-
-body {
-  min-height: 100vh;
-  font-family: var(--font-sans);
-  background-color: var(--color-surface);
-  color: var(--color-ink);
-  -webkit-font-smoothing: antialiased;
-}
-
-button,
-input {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-}
 
 .drive-shell {
   width: 100%;
   height: 100vh;
   height: 100dvh;
-  background: radial-gradient(1200px 900px at 20% -20%, #eef2ff 0%, #f8fafc 55%, #f8fafc 100%);
+  background: radial-gradient(1200px 900px at 20% -20%, #f5f3ff 0%, #fafbfc 55%, #fafbfc 100%);
 }
 
 .drive-main {
@@ -59,8 +18,8 @@ button:disabled {
 
 .app-sidebar {
   width: 272px;
-  background: #0f172a;
-  border-right: 1px solid rgba(148, 163, 184, 0.16);
+  background: var(--color-sidebar-bg);
+  border-right: 1px solid var(--color-sidebar-border);
 }
 
 .app-sidebar-brand {
@@ -72,13 +31,13 @@ button:disabled {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.34);
+  box-shadow: 0 10px 24px rgba(167, 139, 250, 0.25);
 }
 
 .app-sidebar-nav {
   display: grid;
   align-content: start;
-  gap: 4px;
+  gap: 16px;
   padding: 16px 12px;
 }
 
@@ -95,31 +54,32 @@ button:disabled {
 
 .app-sidebar-account {
   padding: 14px 12px 16px;
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--color-sidebar-bg);
+  border-top: 1px solid var(--color-sidebar-border);
 }
 
 .app-sidebar-user {
   min-width: 0;
   min-height: 52px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--color-sidebar-hover);
 }
 
 .app-sidebar-avatar {
   width: 34px;
   height: 34px;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px var(--color-sidebar-border);
 }
 
 .app-sidebar-logout {
   min-height: 40px;
   justify-content: flex-start;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-sidebar-border);
+  background: var(--color-sidebar-hover);
 }
 
 .app-sidebar-logout:hover {
-  border-color: rgba(148, 163, 184, 0.24);
+  border-color: var(--color-primary);
 }
 
 .drive-view {
@@ -172,8 +132,8 @@ button:disabled {
 }
 
 .drive-search-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.16);
 }
 
 .drive-actions {
@@ -219,15 +179,15 @@ button:disabled {
 }
 
 .drive-action-primary {
-  border: 1px solid #4f46e5;
-  background: #4f46e5;
+  border: 1px solid #a78bfa;
+  background: #a78bfa;
   color: #ffffff;
-  box-shadow: 0 10px 22px rgba(79, 70, 229, 0.22);
+  box-shadow: 0 10px 22px rgba(167, 139, 250, 0.35);
 }
 
 .drive-action-primary:hover {
-  background: #4338ca;
-  border-color: #4338ca;
+  background: #8b5cf6;
+  border-color: #8b5cf6;
 }
 
 .drive-breadcrumbs {
@@ -250,7 +210,8 @@ button:disabled {
 .drive-inner {
   width: min(1180px, 100%);
   margin: 0 auto;
-  padding: 0 32px;
+  padding-left: 32px;
+  padding-right: 32px;
 }
 
 .drive-section-title {
@@ -299,9 +260,9 @@ button:disabled {
 
 .file-card-menu-trigger:hover,
 .file-card-menu-trigger:focus-visible {
-  border-color: rgba(99, 102, 241, 0.24);
-  background: #eef2ff;
-  color: #4f46e5;
+  border-color: rgba(167, 139, 250, 0.3);
+  background: #f5f3ff;
+  color: #6366f1;
   transform: translateY(-1px);
 }
 
@@ -461,7 +422,7 @@ button:disabled {
 .drive-content .group:hover {
   transform: translateY(-4px);
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
-  border-color: rgba(99, 102, 241, 0.12);
+  border-color: rgba(167, 139, 250, 0.12);
 }
 
 
@@ -475,6 +436,20 @@ button:disabled {
   display: flex;
   flex-direction: column;
   max-height: min(720px, calc(100dvh - 32px));
+}
+
+/* Uniform height for simple single-form action modals (upload, new folder, edit) */
+.action-modal {
+  display: flex;
+  flex-direction: column;
+  height: 520px;
+  max-height: calc(100dvh - 48px);
+}
+
+.action-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .upload-modal-header,
@@ -519,16 +494,16 @@ button:disabled {
 }
 
 .upload-primary-button {
-  border: 1px solid #4f46e5;
-  background: #4f46e5;
+  border: 1px solid #a78bfa;
+  background: #a78bfa;
 }
 
 .upload-primary-button:hover {
-  background: #4338ca;
+  background: #8b5cf6;
 }
 
 .upload-primary-button:disabled {
-  background: #818cf8;
+  background: #c4b5fd;
 }
 
 .storage-modal {
@@ -543,8 +518,8 @@ button:disabled {
   display: grid;
   place-items: center;
   border-radius: 10px;
-  background: #eef2ff;
-  color: #4f46e5;
+  background: #f5f3ff;
+  color: #6366f1;
 }
 
 .storage-modal-body {
@@ -689,13 +664,13 @@ button:disabled {
 
 .storage-edit-button {
   margin-left: auto;
-  border: 1px solid #c7d2fe;
-  background: #eef2ff;
-  color: #4f46e5;
+  border: 1px solid #ddd6fe;
+  background: #f5f3ff;
+  color: #6366f1;
 }
 
 .storage-edit-button:hover {
-  background: #e0e7ff;
+  background: #ede9fe;
 }
 
 .storage-delete-button {
@@ -776,8 +751,8 @@ button:disabled {
 }
 
 .storage-provider-card:hover {
-  border-color: #a5b4fc;
-  background: #f8fafc;
+  border-color: #c4b5fd;
+  background: #fafbfc;
 }
 
 .storage-provider-card:active {
@@ -798,9 +773,9 @@ button:disabled {
 }
 
 .storage-provider-card-active {
-  border-color: #6366f1;
-  background: #eef2ff;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+  border-color: #a78bfa;
+  background: #f5f3ff;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.18);
 }
 
 .storage-form-grid {
@@ -874,8 +849,8 @@ button:disabled {
 }
 
 .storage-region-trigger-open {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.13);
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.16);
 }
 
 .storage-region-trigger-open::after {
@@ -932,12 +907,12 @@ button:disabled {
 }
 
 .storage-region-option-active {
-  background: #eef2ff;
-  color: #4f46e5;
+  background: #f5f3ff;
+  color: #6366f1;
 }
 
 .storage-region-option-active:hover {
-  background: #e0e7ff;
+  background: #ede9fe;
 }
 
 .storage-region-option span {
@@ -955,8 +930,8 @@ button:disabled {
 
 .storage-form input:focus,
 .storage-form select:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.13);
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.16);
 }
 
 .storage-checkbox {
@@ -978,16 +953,16 @@ button:disabled {
   gap: 8px;
   width: 100%;
   margin-top: 4px;
-  border: 1px solid #4f46e5;
+  border: 1px solid #a78bfa;
   border-radius: 12px;
-  background: #4f46e5;
+  background: #a78bfa;
   color: #ffffff;
   font-size: 14px;
   font-weight: 750;
 }
 
 .storage-submit-button:hover {
-  background: #4338ca;
+  background: #8b5cf6;
 }
 
 .storage-submit-button:disabled {
@@ -1132,13 +1107,13 @@ button:disabled {
 }
 
 .dashboard-edit {
-  border: 1px solid #c7d2fe;
-  background: #eef2ff;
-  color: #4f46e5;
+  border: 1px solid #ddd6fe;
+  background: #f5f3ff;
+  color: #6366f1;
 }
 
 .dashboard-edit:hover {
-  background: #e0e7ff;
+  background: #ede9fe;
 }
 
 .dashboard-delete {
@@ -1323,8 +1298,8 @@ button:disabled {
   place-items: center;
   padding: 32px 20px;
   background:
-    radial-gradient(circle at 25% 20%, rgba(99, 102, 241, 0.24), transparent 30%),
-    linear-gradient(135deg, #0f172a 0%, #1e1b4b 48%, #111827 100%);
+    radial-gradient(circle at 25% 20%, rgba(167, 139, 250, 0.28), transparent 30%),
+    linear-gradient(135deg, #0a0a1a 0%, #1e1b3a 48%, #111827 100%);
 }
 
 .auth-shell {
@@ -1346,14 +1321,16 @@ button:disabled {
   display: grid;
   place-items: center;
   border-radius: 14px;
-  background: #6366f1;
-  box-shadow: 0 14px 34px rgba(79, 70, 229, 0.35);
+  background: #a78bfa;
+  box-shadow: 0 14px 34px rgba(167, 139, 250, 0.45);
 }
 
 .auth-brand-name {
   font-size: 26px;
   line-height: 1;
   font-weight: 800;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
 }
 
 .auth-card {
@@ -1448,8 +1425,8 @@ button:disabled {
 }
 
 .auth-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.18);
 }
 
 .auth-input-invalid {
@@ -1497,7 +1474,7 @@ button:disabled {
 }
 
 .auth-inline-actions a {
-  color: #4f46e5;
+  color: #6366f1;
   font-size: 13px;
   font-weight: 650;
   text-decoration: none;
@@ -1518,7 +1495,7 @@ button:disabled {
   padding: 11px 16px;
   border: 0;
   border-radius: 12px;
-  background: #4f46e5;
+  background: #a78bfa;
   color: #ffffff;
   font-size: 15px;
   line-height: 1.2;
@@ -1531,7 +1508,7 @@ button:disabled {
 }
 
 .auth-submit:hover {
-  background: #4338ca;
+  background: #8b5cf6;
 }
 
 .auth-submit:active {
@@ -1552,7 +1529,7 @@ button:disabled {
 }
 
 .auth-footer a {
-  color: #4f46e5;
+  color: #6366f1;
   font-weight: 650;
   text-decoration: none;
 }

@@ -7,12 +7,12 @@ import {
   Trash2,
   Check,
   Loader2,
-  X,
   Clock,
   Share2,
 } from "lucide-react";
 import { DriveNode } from "../lib/api";
 import { useShareLinks, useCreateShareLink, useRevokeShareLink } from "../lib/queries";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, Button } from "@repo/ui";
 
 const EXPIRY_OPTIONS = [
   { label: "Never", value: undefined },
@@ -49,17 +49,18 @@ function CopyButton({ text }: { text: string }) {
   }
 
   return (
-    <button
+    <Button
+      variant="outline"
       onClick={handleCopy}
-      className={`flex items-center gap-2 px-5 h-11 rounded-xl text-sm font-bold transition-all shadow-sm border ${
+      className={`flex items-center gap-2 h-11 px-5 rounded-xl font-bold transition-all shadow-sm ${
         copied
-          ? "bg-emerald-50 text-emerald-700 border-emerald-200 ring-2 ring-emerald-100"
-          : "bg-white text-slate-700 hover:bg-slate-50 border-slate-200 hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
+          : ""
       }`}
     >
       {copied ? <Check size={16} /> : <Copy size={16} />}
       {copied ? "Copied" : "Copy Link"}
-    </button>
+    </Button>
   );
 }
 
@@ -80,34 +81,29 @@ export function ShareModal({ node, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-md p-4 sm:p-8 animate-in fade-in duration-200 font-sans">
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden ring-1 ring-black/5 animate-in zoom-in-95 duration-200 max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 p-6 sm:p-8 border-b border-slate-100">
-          <div className="flex items-center gap-5">
-            <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center shrink-0 ring-4 ring-indigo-50/50">
-              <Share2 size={24} className="text-indigo-600" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="font-extrabold text-slate-900 text-xl sm:text-2xl mb-1">Share File</h2>
-              <p className="text-sm font-semibold text-slate-500 truncate max-w-[250px] sm:max-w-[350px]">{node.name}</p>
-            </div>
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl p-6 sm:p-8 rounded-[2rem] border border-slate-100 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+        <DialogHeader className="text-left flex flex-row items-center gap-5 space-y-0 pb-6 border-b border-slate-100">
+          <div className="w-14 h-14 bg-neon-violet/10 rounded-2xl flex items-center justify-center shrink-0 ring-4 ring-neon-violet/10">
+            <Share2 size={24} className="text-electric-indigo" />
           </div>
-          <button
-            onClick={onClose}
-            className="p-3 rounded-2xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors shrink-0"
-          >
-            <X size={24} />
-          </button>
-        </div>
+          <div className="min-w-0">
+            <DialogTitle className="font-display font-extrabold text-slate-900 text-xl sm:text-2xl mb-1">
+              Share File
+            </DialogTitle>
+            <p className="text-sm font-semibold text-slate-500 truncate max-w-[250px] sm:max-w-[350px]">
+              {node.name}
+            </p>
+          </div>
+        </DialogHeader>
 
         {/* Create new link */}
-        <div className="p-6 sm:p-8 border-b border-slate-100 bg-slate-50/50">
+        <div className="py-6 border-b border-slate-100 bg-slate-50/50 -mx-6 sm:-mx-8 px-6 sm:px-8">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
             Create New Link
           </p>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-            <div className="flex-1 flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3.5 shadow-sm focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-100 transition-all">
+            <div className="flex-1 flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3.5 shadow-sm focus-within:border-neon-violet focus-within:ring-4 focus-within:ring-neon-violet/20 transition-all">
               <Clock size={18} className="text-slate-400 shrink-0" />
               <select
                 value={expiresIn ?? ""}
@@ -123,10 +119,10 @@ export function ShareModal({ node, onClose }: Props) {
                 ))}
               </select>
             </div>
-            <button
+            <Button
               onClick={handleCreate}
               disabled={createLink.isPending}
-              className="flex items-center justify-center gap-2 px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-bold rounded-xl shadow-md hover:shadow-indigo-200 transition-all shrink-0"
+              className="flex items-center justify-center gap-2 px-6 py-3.5 bg-neon-violet hover:bg-[#8b5cf6] text-white text-sm font-bold rounded-xl shadow-[0_6px_18px_-4px_rgba(167,139,250,0.55)] hover:shadow-[0_10px_28px_-4px_rgba(167,139,250,0.7)] transition-all shrink-0"
             >
               {createLink.isPending ? (
                 <Loader2 size={18} className="animate-spin" />
@@ -134,15 +130,15 @@ export function ShareModal({ node, onClose }: Props) {
                 <Link2 size={18} />
               )}
               Generate Link
-            </button>
+            </Button>
           </div>
         </div>
 
         {/* Existing links */}
-        <div className="flex-1 overflow-y-auto p-6 sm:p-8 min-h-[200px]">
+        <div className="flex-1 overflow-y-auto py-6 min-h-[200px] pr-1">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-500">
-              <Loader2 size={24} className="animate-spin text-indigo-500" />
+              <Loader2 size={24} className="animate-spin text-electric-indigo" />
               <span className="text-sm font-medium">Loading active links…</span>
             </div>
           ) : links.length === 0 ? (
@@ -163,7 +159,7 @@ export function ShareModal({ node, onClose }: Props) {
                     className={`flex flex-col gap-4 p-5 rounded-2xl border transition-colors ${
                       isExpired
                         ? "bg-slate-50/80 border-slate-200/60 opacity-75"
-                        : "bg-white border-slate-200 shadow-sm hover:border-indigo-200 hover:shadow-md"
+                        : "bg-white border-slate-200 shadow-sm hover:border-neon-violet hover:shadow-md"
                     }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -185,14 +181,15 @@ export function ShareModal({ node, onClose }: Props) {
                       {/* Actions */}
                       <div className="flex items-center gap-2 shrink-0">
                         {!isExpired && <CopyButton text={url} />}
-                        <button
+                        <Button
+                          variant="ghost"
                           onClick={() => revokeLink.mutate({ linkId: link.id, nodeId: node.id })}
                           disabled={revokeLink.isPending}
-                          className="flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors border border-transparent hover:border-red-100 focus:outline-none focus:ring-2 focus:ring-red-200"
+                          className="flex items-center justify-center w-11 h-11 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600 hover:border-red-100 border border-transparent focus:ring-red-200 p-0"
                           title="Revoke Link"
                         >
                           <Trash2 size={18} />
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -203,14 +200,14 @@ export function ShareModal({ node, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 sm:px-8 pb-6 sm:pb-8 pt-2 bg-white mt-auto">
-          <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100/50">
-            <p className="text-xs font-semibold text-indigo-600 text-center leading-relaxed">
+        <div className="pt-2">
+          <div className="bg-neon-violet/10 p-4 rounded-xl border border-neon-violet/20">
+            <p className="text-xs font-semibold text-electric-indigo text-center leading-relaxed">
               Anyone with the link can securely view and download this file.
             </p>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

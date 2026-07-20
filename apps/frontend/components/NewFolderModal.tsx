@@ -1,8 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { X, FolderPlus, Loader2 } from "lucide-react";
+import { FolderPlus, Loader2 } from "lucide-react";
 import { useCreateFolder } from "../lib/queries";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  Button,
+  Input,
+} from "@repo/ui";
 
 type Props = {
   parentId: string | null;
@@ -22,64 +31,54 @@ export function NewFolderModal({ parentId, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-180 bg-white rounded-[30px] shadow-2xl overflow-hidden border border-slate-100">
-        <div className="px-10 py-9 border-b border-slate-100 bg-linear-to-r from-indigo-50 via-white to-white">
-          <div className="flex items-start justify-between gap-8">
-            <div className="flex items-start gap-5">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
-                <FolderPlus size={22} className="text-indigo-600" />
-              </div>
-              <div className="pt-0.5">
-                <h2 className="text-[24px] leading-tight font-semibold text-slate-900">
-                  Create a new folder
-                </h2>
-                <p className="text-sm text-slate-500 mt-3 max-w-lg leading-6">
-                  Keep related files together with a dedicated folder.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-full hover:bg-white text-slate-400 hover:text-slate-600 transition"
-              aria-label="Close"
-            >
-              <X size={18} />
-            </button>
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="action-modal max-w-[480px] p-6 rounded-3xl border border-slate-100 shadow-2xl">
+        <DialogHeader className="flex flex-row items-start gap-4 space-y-0 text-left shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-neon-violet/10 flex items-center justify-center shrink-0 mt-0.5">
+            <FolderPlus size={20} className="text-electric-indigo" />
           </div>
-        </div>
+          <div className="space-y-1">
+            <DialogTitle className="font-display text-lg font-semibold text-slate-900">
+              Create a new folder
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500 leading-relaxed">
+              Keep related files together with a dedicated folder.
+            </DialogDescription>
+          </div>
+        </DialogHeader>
 
-        <div className="px-10 py-10">
-          <label className="block text-sm font-semibold text-slate-700 mb-4">Folder name</label>
-          <input
+        <div className="action-modal-body flex flex-col justify-center space-y-2">
+          <label className="block text-sm font-semibold text-slate-700">Folder name</label>
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Design assets"
             autoFocus
-            className="w-full px-5 py-4.5 rounded-2xl border border-slate-200 text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition shadow-sm"
+            className="w-full"
           />
-          <p className="text-xs text-slate-500 mt-4 leading-5 max-w-lg">
+          <p className="text-xs text-slate-400">
             Use a short, clear name so it is easy to find later.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 px-10 py-8 border-t border-slate-100 bg-slate-50">
-          <button
+        <div className="flex gap-3 pt-2 shrink-0">
+          <Button
+            variant="outline"
             onClick={onClose}
-            className="py-4.5 px-4 rounded-2xl border border-slate-200 bg-white text-sm font-medium text-slate-600 hover:bg-slate-50 transition"
+            className="flex-1 py-4.5 rounded-2xl"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleCreate}
             disabled={!name.trim() || createFolder.isPending}
-            className="flex items-center justify-center gap-2 py-4.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold transition"
+            className="flex-1 py-4.5 rounded-2xl bg-neon-violet hover:bg-[#8b5cf6] text-white font-semibold"
           >
-            {createFolder.isPending && <Loader2 size={14} className="animate-spin" />}
+            {createFolder.isPending && <Loader2 size={14} className="animate-spin mr-2" />}
             Create folder
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

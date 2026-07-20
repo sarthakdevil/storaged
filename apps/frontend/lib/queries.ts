@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -13,8 +13,8 @@ import {
   StorageDashboard,
   TrashNode,
 } from "./api";
-import { useAuth } from "../components/AuthContext";
-import { useToast } from "../components/Toast";
+import { useAuth } from "@repo/ui";
+import { useToast } from "@repo/ui";
 
 const PROVIDER_DEFAULT_QUOTA_GB: Record<string, number> = {
   "s3": 5,

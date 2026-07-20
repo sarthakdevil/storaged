@@ -29,6 +29,15 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "db:generate": {
+      "cache": false,
+      "outputs": [
+        "../../apps/backend/src/generated/**"
+      ]
+    },
+    "db:migrate": {
+      "cache": false
     }
   }
 }

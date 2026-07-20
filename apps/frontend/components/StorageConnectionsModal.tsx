@@ -9,42 +9,71 @@ import {
   useStorageConnections,
   useUpdateStorageConnection,
 } from "../lib/queries";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Button } from "@repo/ui";
 
 const PROVIDERS: {
   value: StorageProvider;
   label: string;
   description: string;
   endpointHint: string;
+  /** Approximate free-tier storage allowance, in GB. Used to suggest a sane default quota. */
+  freeGb?: number;
 }[] = [
   {
     value: "s3",
     label: "Amazon S3 / compatible",
     description: "AWS S3 or any custom S3 endpoint.",
     endpointHint: "https://s3.us-east-1.amazonaws.com",
+    freeGb: 5,
   },
   {
     value: "cloudflare-r2",
     label: "Cloudflare R2",
     description: "R2 buckets using account-scoped S3 credentials.",
     endpointHint: "https://<account-id>.r2.cloudflarestorage.com",
+    freeGb: 10,
   },
   {
     value: "backblaze",
     label: "Backblaze B2",
     description: "Use the S3 endpoint shown on your B2 bucket.",
     endpointHint: "https://s3.us-west-004.backblazeb2.com",
+    freeGb: 10,
   },
   {
     value: "supabase",
     label: "Supabase Storage",
     description: "Supabase S3-compatible storage endpoint.",
     endpointHint: "https://<project-ref>.storage.supabase.co/storage/v1/s3",
+    freeGb: 1,
   },
   {
     value: "storj",
     label: "Storj",
     description: "Storj-hosted S3-compatible gateway.",
     endpointHint: "https://gateway.storjshare.io",
+    freeGb: 25,
+  },
+  {
+    value: "idrive-e2",
+    label: "IDrive e2",
+    description: "10 GB free. Endpoint is unique per account/region.",
+    endpointHint: "https://<your-region>.idrivee2-<id>.com",
+    freeGb: 10,
+  },
+  {
+    value: "filebase",
+    label: "Filebase",
+    description: "5 GB free storage and bandwidth, no API request fees.",
+    endpointHint: "https://s3.filebase.io",
+    freeGb: 5,
+  },
+  {
+    value: "oracle-oci",
+    label: "Oracle Cloud Storage",
+    description: "10 GB always-free Object Storage via the S3 Compatibility API.",
+    endpointHint: "https://<namespace>.compat.objectstorage.<region>.oci.customer-oci.com",
+    freeGb: 10,
   },
 ];
 
@@ -117,6 +146,19 @@ const REGION_OPTIONS: Record<
     { value: "ap1", label: "Asia Pacific Gateway" },
   ],
   "cloudflare-r2": [{ value: "auto", label: "Auto" }],
+  "idrive-e2": [{ value: "auto", label: "Per-account (set via endpoint)" }],
+  filebase: [{ value: "auto", label: "Auto (global endpoint)" }],
+  "oracle-oci": [
+    { value: "us-phoenix-1", label: "US West (Phoenix)" },
+    { value: "us-ashburn-1", label: "US East (Ashburn)" },
+    { value: "uk-london-1", label: "UK South (London)" },
+    { value: "eu-frankfurt-1", label: "Germany Central (Frankfurt)" },
+    { value: "ap-mumbai-1", label: "India West (Mumbai)" },
+    { value: "ap-singapore-1", label: "Singapore" },
+    { value: "ap-sydney-1", label: "Australia East (Sydney)" },
+    { value: "ap-tokyo-1", label: "Japan East (Tokyo)" },
+    { value: "sa-saopaulo-1", label: "Brazil East (Sao Paulo)" },
+  ],
 };
 
 const initialForm: StorageConnectionInput = {
@@ -240,9 +282,11 @@ export function StorageConnectionsModal({
       region:
         provider === "storj"
           ? "us1"
-          : provider === "cloudflare-r2"
+          : provider === "cloudflare-r2" || provider === "idrive-e2" || provider === "filebase"
             ? "auto"
-            : prev.region || "us-east-1",
+            : provider === "oracle-oci"
+              ? "us-ashburn-1"
+              : prev.region || "us-east-1",
     }));
   }
 
@@ -304,28 +348,21 @@ export function StorageConnectionsModal({
   }
 
   return (
-    <div className="storage-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="storage-modal w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden">
-        <div className="storage-modal-header flex items-center justify-between px-6 py-4 border-b border-slate-100">
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="w-full max-w-5xl sm:max-w-5xl h-[85vh] max-h-[800px] p-0 flex flex-col overflow-hidden rounded-2xl border border-slate-100 shadow-2xl">
+        <DialogHeader className="px-6 py-4 border-b border-slate-100 flex flex-row items-center justify-between text-left space-y-0 shrink-0">
           <div className="flex items-center gap-3">
             <div className="storage-modal-icon">
               <Database size={18} />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Storage connections</h2>
-              <p className="text-xs text-slate-500">Buckets used for new uploads</p>
+              <DialogTitle className="font-display text-base font-semibold text-slate-900">Storage connections</DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">Buckets used for new uploads</DialogDescription>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
-            aria-label="Close storage connections"
-          >
-            <X size={18} />
-          </button>
-        </div>
+        </DialogHeader>
 
-        <div className="storage-modal-body">
+        <div className="storage-modal-body flex-1 min-h-0">
           <section className="storage-list" onScroll={onConnectionListScroll}>
             <h3 className="storage-section-title">Connected buckets</h3>
             {isLoading ? (
@@ -488,6 +525,16 @@ export function StorageConnectionsModal({
                   />
                 </label>
               )}
+              {form.provider === "oracle-oci" && (
+                <label>
+                  <span>Namespace</span>
+                  <input
+                    value={form.accountId}
+                    onChange={(e) => update("accountId", e.target.value)}
+                    placeholder="Object Storage namespace"
+                  />
+                </label>
+              )}
               {form.provider === "supabase" && (
                 <label>
                   <span>Project ref</span>
@@ -500,7 +547,9 @@ export function StorageConnectionsModal({
               )}
             </div>
               <label>
-                <span>Storage quota (GB) <em style={{ fontStyle: "normal", opacity: 0.6 }}>(optional)</em></span>
+                <span>
+                  Storage quota (GB) <em style={{ fontStyle: "normal", opacity: 0.6 }}>(optional)</em>
+                </span>
                 <input
                   type="number"
                   min="0.1"
@@ -509,7 +558,11 @@ export function StorageConnectionsModal({
                   onChange={(e) =>
                     update("quotaGb", e.target.value ? parseFloat(e.target.value) : undefined)
                   }
-                  placeholder="e.g. 25"
+                  placeholder={
+                    currentProvider.freeGb
+                      ? `e.g. ${currentProvider.freeGb} (${currentProvider.label} free tier)`
+                      : "Leave blank for no limit"
+                  }
                 />
               </label>
             <label className="storage-checkbox">
@@ -537,29 +590,31 @@ export function StorageConnectionsModal({
             </button>
           </form>
         </div>
-      </div>
+      </DialogContent>
 
       {showSaved && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
-            <h3 className="text-lg font-semibold">Settings saved</h3>
-            <p className="mt-2 text-sm text-slate-600">Storage connection saved successfully.</p>
+        <Dialog open={true} onOpenChange={() => { setShowSaved(false); onClose(); }}>
+          <DialogContent className="max-w-sm p-6 rounded-2xl border border-slate-100 shadow-2xl">
+            <DialogHeader className="text-left">
+              <DialogTitle className="font-display text-lg font-semibold text-slate-900">Settings saved</DialogTitle>
+              <DialogDescription className="text-sm text-slate-500 mt-2">
+                Storage connection saved successfully.
+              </DialogDescription>
+            </DialogHeader>
             <div className="mt-4 flex justify-end">
-              <button
-                type="button"
+              <Button
                 onClick={() => {
                   setShowSaved(false);
                   onClose();
                 }}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500"
+                className="bg-neon-violet hover:bg-[#8b5cf6] text-white font-medium px-4 py-2"
               >
                 OK
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
-
-    </div>
+    </Dialog>
   );
 }

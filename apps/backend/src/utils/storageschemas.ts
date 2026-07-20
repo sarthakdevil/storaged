@@ -111,12 +111,54 @@ const createS3ConnectionSchema = () =>
     region: z.string().trim().min(1, "S3 connections need a region."),
   });
 
+const createIdriveE2ConnectionSchema = () =>
+  commonConnectionSchema
+    .extend({
+      provider: z.literal("idrive-e2"),
+      region: optionalTrimmedStringSchema,
+    })
+    .superRefine((value, context) => {
+      if (!value.endpointUrl) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "IDrive e2 connections need your account's region endpoint URL.",
+          path: ["endpointUrl"],
+        });
+      }
+    });
+
+const createFilebaseConnectionSchema = () =>
+  commonConnectionSchema.extend({
+    provider: z.literal("filebase"),
+    region: optionalTrimmedStringSchema,
+  });
+
+const createOracleOciConnectionSchema = () =>
+  commonConnectionSchema
+    .extend({
+      provider: z.literal("oracle-oci"),
+      region: z.string().trim().min(1, "Oracle Cloud connections need a region."),
+      accountId: optionalTrimmedStringSchema,
+    })
+    .superRefine((value, context) => {
+      if (!value.accountId && !value.endpointUrl) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Oracle Cloud connections need a namespace or a custom endpoint URL.",
+          path: ["accountId"],
+        });
+      }
+    });
+
 export const storageConnectionSchemas = {
   s3: createS3ConnectionSchema(),
   supabase: createSupabaseConnectionSchema(),
   backblaze: createBackblazeConnectionSchema(),
   storj: createStorjConnectionSchema(),
   "cloudflare-r2": createCloudflareR2ConnectionSchema(),
+  "idrive-e2": createIdriveE2ConnectionSchema(),
+  filebase: createFilebaseConnectionSchema(),
+  "oracle-oci": createOracleOciConnectionSchema(),
 } as const;
 
 export type StorageProvider = keyof typeof storageConnectionSchemas;

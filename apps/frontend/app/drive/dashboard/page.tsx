@@ -11,7 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { UIEvent, useMemo, useState } from "react";
-import { formatSize } from "../../../components/FileCard";
+import { formatSize } from "@repo/ui";
 import { StorageConnectionsModal } from "../../../components/StorageConnectionsModal";
 import { StorageConnection } from "../../../lib/api";
 import { useDeleteStorageConnection, useStorageDashboard } from "../../../lib/queries";
@@ -52,11 +52,11 @@ export default function StorageDashboardPage() {
   return (
     <div className="drive-view flex flex-col h-full">
       <header className="flex items-center gap-3 px-8 py-4 bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="w-9 h-9 bg-indigo-50 rounded-xl flex items-center justify-center">
-          <HardDrive size={18} className="text-indigo-500" />
+        <div className="w-9 h-9 bg-neon-violet/10 rounded-xl flex items-center justify-center">
+          <HardDrive size={18} className="text-electric-indigo" />
         </div>
         <div>
-          <h1 className="text-base font-semibold text-slate-900">Storage dashboard</h1>
+          <h1 className="font-display text-base font-semibold text-slate-900">Storage dashboard</h1>
           <p className="text-xs text-slate-500">Connected buckets, usage, and health</p>
         </div>
         <button
@@ -72,13 +72,13 @@ export default function StorageDashboardPage() {
       <main className="dashboard-content">
         {isLoading ? (
           <div className="dashboard-state">
-            <Loader2 size={28} className="animate-spin text-indigo-500" />
+            <Loader2 size={28} className="animate-spin text-neon-violet" />
           </div>
         ) : isError || !summary ? (
           <div className="dashboard-state">
             <AlertCircle size={28} className="text-red-500" />
             <p>Could not load storage dashboard.</p>
-            <button onClick={() => refetch()} className="text-sm text-indigo-600">
+            <button onClick={() => refetch()} className="text-sm text-electric-indigo">
               Try again
             </button>
           </div>

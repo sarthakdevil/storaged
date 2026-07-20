@@ -4,9 +4,8 @@ import { useState } from "react";
 import { Star, Loader2, CloudOff } from "lucide-react";
 import { DriveNode, api } from "../../../lib/api";
 import { useNodes, useTrashNode, useToggleFavorite } from "../../../lib/queries";
-import { FileCard } from "../../../components/FileCard";
 import { EditModal } from "../../../components/EditModal";
-import { useToast } from "../../../components/Toast";
+import { useToast, FileCard } from "@repo/ui";
 
 export default function FavoritesPage() {
   const { toast } = useToast();
@@ -37,7 +36,7 @@ export default function FavoritesPage() {
           <Star size={16} className="text-amber-400 fill-amber-400" />
         </div>
         <div>
-          <h1 className="text-base font-semibold text-slate-900">Favorites</h1>
+          <h1 className="font-display text-base font-semibold text-slate-900">Favorites</h1>
           <p className="text-xs text-slate-400">
             {nodes.length} starred item{nodes.length !== 1 ? "s" : ""}
           </p>
@@ -47,7 +46,7 @@ export default function FavoritesPage() {
       <div className="flex-1 px-8 py-6">
         {isLoading ? (
           <div className="flex items-center justify-center h-64 gap-3">
-            <Loader2 size={28} className="animate-spin text-indigo-400" />
+            <Loader2 size={28} className="animate-spin text-neon-violet" />
           </div>
         ) : isError ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">

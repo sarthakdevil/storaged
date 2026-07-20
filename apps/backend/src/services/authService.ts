@@ -3,9 +3,10 @@ import {
   generateSessionToken,
   hashPassword,
   verifyPassword,
-} from "../utils/auth";
+  AuthError,
+  hashSha256,
+} from "@repo/auth";
 import { sendPasswordResetEmail } from "../utils/mailer";
-import { createHash, randomBytes } from "node:crypto";
 import { logger } from "../utils/logger";
 import { getRuntimeValue } from "../utils/runtimeEnv";
 
@@ -34,16 +35,6 @@ type PasswordResetPayload = {
   token: string;
   password: string;
 };
-
-class AuthError extends Error {
-  statusCode: number;
-
-  constructor(message: string, statusCode: number) {
-    super(message);
-    this.name = "AuthError";
-    this.statusCode = statusCode;
-  }
-}
 
 const handleDbError = (error: unknown, context: string): never => {
   logger.error("Database error", { context, error });
@@ -77,13 +68,15 @@ const getAppUrl = () => {
   return baseUrl.replace(/\/$/, "");
 };
 
-const hashResetToken = (token: string) => {
-  return createHash("sha256").update(token).digest("hex");
+const hashResetToken = async (token: string) => {
+  return hashSha256(token);
 };
 
 const createPasswordResetToken = async (userId: string) => {
-  const token = randomBytes(32).toString("hex");
-  const tokenHash = hashResetToken(token);
+  const buf = new Uint8Array(32);
+  crypto.getRandomValues(buf);
+  const token = Array.from(buf).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const tokenHash = await hashResetToken(token);
   const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
 
   await prisma.passwordResetToken.deleteMany({
@@ -137,66 +130,66 @@ export const registerUser = async ({
   userAgent,
 }: AuthPayload) => {
   try {
-  const normalizedEmail = normalizeEmail(email);
+    const normalizedEmail = normalizeEmail(email);
 
-  if (!validateEmail(normalizedEmail)) {
-    throw new AuthError("Please provide a valid email address.", 400);
-  }
+    if (!validateEmail(normalizedEmail)) {
+      throw new AuthError("Please provide a valid email address.", 400);
+    }
 
-  if (password.length < 8) {
-    throw new AuthError("Password must be at least 8 characters long.", 400);
-  }
+    if (password.length < 8) {
+      throw new AuthError("Password must be at least 8 characters long.", 400);
+    }
 
-  const existingUser = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-  });
-
-  if (existingUser) {
-    throw new AuthError("An account with this email already exists.", 409);
-  }
-
-  const hashedPassword = await hashPassword(password);
-
-  const result = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        email: normalizedEmail,
-        name: sanitizeName(name),
-        password: hashedPassword,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-      },
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
     });
 
-    await tx.drive.create({
-      data: {
-        ownerId: user.id,
-        name: DEFAULT_DRIVE_NAME,
-      },
+    if (existingUser) {
+      throw new AuthError("An account with this email already exists.", 409);
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: normalizedEmail,
+          name: sanitizeName(name),
+          password: hashedPassword,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          createdAt: true,
+        },
+      });
+
+      await tx.drive.create({
+        data: {
+          ownerId: user.id,
+          name: DEFAULT_DRIVE_NAME,
+        },
+      });
+
+      const session = await tx.session.create({
+        data: {
+          userId: user.id,
+          token: generateSessionToken(),
+          expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+          ipAddress,
+          userAgent,
+        },
+        select: {
+          token: true,
+          expiresAt: true,
+        },
+      });
+
+      return { user, session };
     });
 
-    const session = await tx.session.create({
-      data: {
-        userId: user.id,
-        token: generateSessionToken(),
-        expiresAt: new Date(Date.now() + SESSION_TTL_MS),
-        ipAddress,
-        userAgent,
-      },
-      select: {
-        token: true,
-        expiresAt: true,
-      },
-    });
-
-    return { user, session };
-  });
-
-  return result;
+    return result;
   } catch (error) {
     if (error instanceof AuthError) throw error;
     handleDbError(error, "registerUser");
@@ -210,55 +203,55 @@ export const loginUser = async ({
   userAgent,
 }: AuthPayload) => {
   try {
-  const normalizedEmail = normalizeEmail(email);
+    const normalizedEmail = normalizeEmail(email);
 
-  if (!validateEmail(normalizedEmail)) {
-    throw new AuthError("Please provide a valid email address.", 400);
-  }
+    if (!validateEmail(normalizedEmail)) {
+      throw new AuthError("Please provide a valid email address.", 400);
+    }
 
-  if (!password) {
-    throw new AuthError("Password is required.", 400);
-  }
+    if (!password) {
+      throw new AuthError("Password is required.", 400);
+    }
 
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      password: true,
-      createdAt: true,
-    },
-  });
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        password: true,
+        createdAt: true,
+      },
+    });
 
-  if (!user) {
-    throw new AuthError("Invalid email or password.", 401);
-  }
+    if (!user) {
+      throw new AuthError("Invalid email or password.", 401);
+    }
 
-  const passwordMatches = await verifyPassword(password, user.password);
+    const passwordMatches = await verifyPassword(password, user.password);
 
-  if (!passwordMatches) {
-    throw new AuthError("Invalid email or password.", 401);
-  }
+    if (!passwordMatches) {
+      throw new AuthError("Invalid email or password.", 401);
+    }
 
-  const session = await createSession({
-    userId: user.id,
-    ipAddress,
-    userAgent,
-  });
+    const session = await createSession({
+      userId: user.id,
+      ipAddress,
+      userAgent,
+    });
 
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      createdAt: user.createdAt,
-    },
-    session: {
-      token: session.token,
-      expiresAt: session.expiresAt,
-    },
-  };
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        createdAt: user.createdAt,
+      },
+      session: {
+        token: session.token,
+        expiresAt: session.expiresAt,
+      },
+    };
   } catch (error) {
     if (error instanceof AuthError) throw error;
     handleDbError(error, "loginUser");
@@ -294,43 +287,43 @@ export const isAuthError = (error: unknown): error is AuthError => {
 
 export const requestPasswordReset = async ({ email }: PasswordResetRequestPayload) => {
   try {
-  const normalizedEmail = normalizeEmail(email);
+    const normalizedEmail = normalizeEmail(email);
 
-  if (!validateEmail(normalizedEmail)) {
-    throw new AuthError("Please provide a valid email address.", 400);
-  }
+    if (!validateEmail(normalizedEmail)) {
+      throw new AuthError("Please provide a valid email address.", 400);
+    }
 
-  const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-    },
-  });
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
 
-  if (!user) {
+    if (!user) {
+      return {
+        message: "If an account exists for that email, a reset link has been sent.",
+      };
+    }
+
+    const { token } = await createPasswordResetToken(user.id);
+    const resetUrl = new URL("/reset-password", getAppUrl());
+    resetUrl.searchParams.set("token", token);
+    resetUrl.searchParams.set("email", user.email);
+
+    console.log(`Password reset URL for ${user.email}: ${resetUrl.toString()}`);
+
+    await sendPasswordResetEmail({
+      to: user.email,
+      name: user.name,
+      resetUrl: resetUrl.toString(),
+    });
+
     return {
       message: "If an account exists for that email, a reset link has been sent.",
     };
-  }
-
-  const { token } = await createPasswordResetToken(user.id);
-  const resetUrl = new URL("/reset-password", getAppUrl());
-  resetUrl.searchParams.set("token", token);
-  resetUrl.searchParams.set("email", user.email);
-
-  console.log(`Password reset URL for ${user.email}: ${resetUrl.toString()}`);
-
-  await sendPasswordResetEmail({
-    to: user.email,
-    name: user.name,
-    resetUrl: resetUrl.toString(),
-  });
-
-  return {
-    message: "If an account exists for that email, a reset link has been sent.",
-  };
   } catch (error) {
     if (error instanceof AuthError) throw error;
     handleDbError(error, "requestPasswordReset");
@@ -339,47 +332,47 @@ export const requestPasswordReset = async ({ email }: PasswordResetRequestPayloa
 
 export const resetPassword = async ({ token, password }: PasswordResetPayload) => {
   try {
-  if (!token) {
-    throw new AuthError("Reset token is required.", 400);
-  }
+    if (!token) {
+      throw new AuthError("Reset token is required.", 400);
+    }
 
-  if (!password || password.length < 8) {
-    throw new AuthError("Password must be at least 8 characters long.", 400);
-  }
+    if (!password || password.length < 8) {
+      throw new AuthError("Password must be at least 8 characters long.", 400);
+    }
 
-  const tokenHash = hashResetToken(token);
-  const now = new Date();
+    const tokenHash = await hashResetToken(token);
+    const now = new Date();
 
-  const resetToken = await prisma.passwordResetToken.findUnique({
-    where: { tokenHash },
-    include: { user: true },
-  });
-
-  if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= now) {
-    throw new AuthError("This reset link is invalid or has expired.", 400);
-  }
-
-  const hashedPassword = await hashPassword(password);
-
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({
-      where: { id: resetToken.userId },
-      data: { password: hashedPassword },
+    const resetToken = await prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+      include: { user: true },
     });
 
-    await tx.session.deleteMany({
-      where: { userId: resetToken.userId },
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= now) {
+      throw new AuthError("This reset link is invalid or has expired.", 400);
+    }
+
+    const hashedPassword = await hashPassword(password);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: resetToken.userId },
+        data: { password: hashedPassword },
+      });
+
+      await tx.session.deleteMany({
+        where: { userId: resetToken.userId },
+      });
+
+      await tx.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: now },
+      });
     });
 
-    await tx.passwordResetToken.update({
-      where: { id: resetToken.id },
-      data: { usedAt: now },
-    });
-  });
-
-  return {
-    message: "Your password has been reset. Please sign in again.",
-  };
+    return {
+      message: "Your password has been reset. Please sign in again.",
+    };
   } catch (error) {
     if (error instanceof AuthError) throw error;
     handleDbError(error, "resetPassword");

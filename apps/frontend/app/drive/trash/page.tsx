@@ -13,8 +13,7 @@ import {
   Eye,
 } from "lucide-react";
 import { useTrash, useRestoreNode, useDeleteNode, useEmptyTrash } from "../../../lib/queries";
-import { formatSize, formatDate } from "../../../components/FileCard";
-import { ConfirmDialog } from "../../../components/ConfirmDialog";
+import { ConfirmDialog, formatSize, formatDate } from "@repo/ui";
 import { TrashNode } from "../../../lib/api";
 
 export default function TrashPage() {
@@ -40,7 +39,7 @@ export default function TrashPage() {
               <Trash2 size={16} className="text-red-500" />
             </div>
             <div>
-              <h1 className="text-base font-semibold text-slate-900">Trash</h1>
+              <h1 className="font-display text-base font-semibold text-slate-900">Trash</h1>
               <p className="text-xs text-slate-400">
                 {nodes.length} item{nodes.length !== 1 ? "s" : ""} in trash
               </p>
@@ -77,7 +76,7 @@ export default function TrashPage() {
       <div className="flex-1 pt-10 pb-8">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3">
-            <Loader2 size={32} className="animate-spin text-indigo-400" />
+            <Loader2 size={32} className="animate-spin text-neon-violet" />
             <p className="text-sm text-slate-400">Loading trash...</p>
           </div>
         ) : isError ? (
@@ -88,7 +87,7 @@ export default function TrashPage() {
             <p className="text-sm font-medium text-slate-600">
               Could not load trash. Is the backend running?
             </p>
-            <button onClick={() => refetch()} className="text-sm text-indigo-600 hover:underline">
+            <button onClick={() => refetch()} className="text-sm text-electric-indigo hover:underline">
               Try again
             </button>
           </div>
@@ -149,8 +148,8 @@ function TrashListItem({
 
   return (
     <div className="flex items-center gap-6 rounded-2xl border border-slate-200 bg-white px-6 py-5 transition hover:shadow-sm min-h-24">
-      <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl ${node.type === "FOLDER" ? "bg-indigo-50" : "bg-slate-50"}`}>
-        <Icon size={24} className={node.type === "FOLDER" ? "text-indigo-500" : "text-slate-500"} />
+      <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl ${node.type === "FOLDER" ? "bg-neon-violet/10" : "bg-slate-50"}`}>
+        <Icon size={24} className={node.type === "FOLDER" ? "text-electric-indigo" : "text-slate-500"} />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -175,7 +174,7 @@ function TrashListItem({
             className="file-row-action-button"
             aria-label="Restore"
           >
-            {restoring ? <Loader2 size={16} className="animate-spin text-indigo-500" /> : <RotateCcw size={16} className="text-indigo-500" />}
+            {restoring ? <Loader2 size={16} className="animate-spin text-electric-indigo" /> : <RotateCcw size={16} className="text-electric-indigo" />}
           </button>
         </ActionButton>
         <ActionButton label="Preview" hidden={node.type !== "FILE"}>

@@ -1,9 +1,17 @@
 "use client";
 
 import { useState, useEffect, KeyboardEvent } from "react";
-import { X, Star, Tag, Loader2 } from "lucide-react";
+import { Star, Tag, Loader2, X } from "lucide-react";
 import { DriveNode } from "../lib/api";
 import { useUpdateNode } from "../lib/queries";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Button,
+  Input,
+} from "@repo/ui";
 
 type Props = {
   node: DriveNode | null;
@@ -60,35 +68,29 @@ export function EditModal({ node, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-base font-semibold text-slate-900">Edit details</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
-          >
-            <X size={18} />
-          </button>
-        </div>
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="action-modal max-w-[440px] p-6 rounded-3xl border border-slate-100 shadow-2xl">
+        <DialogHeader className="text-left shrink-0">
+          <DialogTitle className="font-display text-lg font-semibold text-slate-900">
+            Edit details
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* Body */}
-        <div className="px-6 py-5 space-y-4">
+        <div className="action-modal-body py-4 space-y-4">
           {/* Name */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Name</label>
-            <input
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700">Name</label>
+            <Input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+              className="w-full"
             />
           </div>
 
           {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700">
               Description{" "}
               <span className="text-slate-400 font-normal">(optional)</span>
             </label>
@@ -97,27 +99,27 @@ export function EditModal({ node, onClose }: Props) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Add a note…"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-neon-violet focus:border-transparent transition resize-none"
             />
           </div>
 
           {/* Tags */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+          <div className="space-y-1.5">
+            <label className="block text-sm font-semibold text-slate-700">
               <Tag size={13} className="inline mr-1 text-slate-400" />
               Tags
             </label>
-            <div className="flex flex-wrap gap-1.5 p-2.5 rounded-xl border border-slate-200 min-h-10 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-transparent transition">
+            <div className="flex flex-wrap gap-1.5 p-2.5 rounded-xl border border-slate-200 min-h-10 focus-within:ring-2 focus-within:ring-neon-violet focus-within:border-transparent transition">
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium"
+                  className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-neon-violet/10 text-electric-indigo font-medium"
                 >
                   {tag}
                   <button
                     type="button"
                     onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                    className="hover:text-indigo-900"
+                    className="hover:text-electric-indigo/70"
                   >
                     <X size={10} />
                   </button>
@@ -154,23 +156,24 @@ export function EditModal({ node, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
-          <button
+        <div className="flex gap-3 pt-2 shrink-0">
+          <Button
+            variant="outline"
             onClick={onClose}
-            className="flex-1 py-2.5 px-4 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-white transition"
+            className="flex-1 py-4.5 rounded-2xl"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleSave}
             disabled={update.isPending || !name.trim()}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-60 text-white text-sm font-semibold transition"
+            className="flex-1 py-4.5 rounded-2xl bg-neon-violet hover:bg-[#8b5cf6] text-white font-semibold"
           >
-            {update.isPending && <Loader2 size={14} className="animate-spin" />}
+            {update.isPending && <Loader2 size={14} className="animate-spin mr-2" />}
             Save changes
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
