@@ -254,7 +254,7 @@ export function useUpdateNode() {
       api.patch<DriveNode>(`/files/${id}`, body),
     onSuccess: (updated) => {
       qc.setQueryData<DriveNode[]>(keys.nodes, (prev) =>
-        prev?.map((n) => (n.id === updated.id ? updated : n)) ?? []
+        prev?.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)) ?? []
       );
       toast("Details saved");
     },
@@ -272,7 +272,7 @@ export function useToggleFavorite() {
       api.patch<DriveNode>(`/files/${id}`, { isFavorite }),
     onSuccess: (updated) => {
       qc.setQueryData<DriveNode[]>(keys.nodes, (prev) =>
-        prev?.map((n) => (n.id === updated.id ? updated : n)) ?? []
+        prev?.map((n) => (n.id === updated.id ? { ...n, ...updated } : n)) ?? []
       );
       toast(updated.isFavorite ? "Added to favorites" : "Removed from favorites");
     },

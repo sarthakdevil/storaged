@@ -1431,6 +1431,9 @@ export const updateNodeDetails = async ({
 
   return {
     id: updated.id,
+    driveId: updated.driveId,
+    parentId: updated.parentId,
+    createdAt: updated.createdAt,
     type: updated.type,
     name: updated.name,
     path: updated.path,
