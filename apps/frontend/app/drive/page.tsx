@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import {
   Search,
-  FolderPlus,
   ChevronRight,
   HardDrive,
   Loader2,
@@ -116,8 +115,8 @@ export default function DrivePage() {
     <div className="flex flex-col h-full bg-[#f8fafc] overflow-y-auto">
       {/* Top bar */}
       <header className="bg-white border-b border-slate-100 sticky top-0 z-10 py-4 flex items-center justify-between shrink-0 shadow-xs">
-        <div className="drive-inner flex items-center justify-between gap-4 w-full">
-          <div className="relative flex-1 max-w-sm">
+        <div className="drive-inner flex flex-wrap items-center justify-between gap-4 w-full">
+          <div className="relative min-w-0 basis-full sm:basis-60 flex-1 sm:max-w-sm">
             <Search
               size={15}
               className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
@@ -135,7 +134,7 @@ export default function DrivePage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="drive-file-actions flex items-center gap-3 shrink-0">
             <button
               onClick={() => setShowNewFolder(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50/50 shadow-xs transition"
@@ -155,11 +154,11 @@ export default function DrivePage() {
       </header>
 
       {/* Breadcrumbs & Title & Filters Block */}
-      <div className="drive-inner pt-14 pb-4 shrink-0">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+      <div className="drive-inner pt-6 sm:pt-14 pb-4 shrink-0">
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
           {/* Left Title section */}
-          <div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-1.5 font-display">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] mb-1.5 font-display break-all">
               {crumbs.length > 1 ? (
                 crumbs.map((crumb, i) => (
                    <span key={i} className="flex items-center gap-1.5">
@@ -176,7 +175,7 @@ export default function DrivePage() {
                 <span>Workspace</span>
               )}
             </div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight font-display">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-display break-all">
               {crumbs[crumbs.length - 1].name}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
@@ -185,7 +184,7 @@ export default function DrivePage() {
           </div>
 
           {/* Right Filters section */}
-          <div className="flex items-center gap-3.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-3.5 min-w-0">
             <div className="flex items-center gap-2.5 flex-wrap">
               {(["all", "recent", "starred", "documents", "media"] as FilterType[]).map((tab) => {
                 const active = selectedFilter === tab;
@@ -272,7 +271,7 @@ export default function DrivePage() {
               </h2>
 
               {viewMode === "grid" ? (
-                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                <div className="file-grid grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5">
                   {visible.map((node) => (
                     <FileCard
                       key={node.id}

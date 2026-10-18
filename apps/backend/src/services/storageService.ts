@@ -54,6 +54,22 @@ class StorageError extends Error {
 
 const normalizeName = (value: string) => value.trim().toLowerCase() as StorageProvider;
 
+// Approximate free-tier storage caps (GB) used as the quota fallback when a
+// connection doesn't have a custom quota configured.
+const PROVIDER_FREE_TIER_GB: Record<StorageProvider, number> = {
+  s3: 5,
+  supabase: 1,
+  backblaze: 10,
+  storj: 25,
+  "cloudflare-r2": 10,
+  "idrive-e2": 10,
+  filebase: 5,
+  "oracle-oci": 20,
+};
+
+const resolveQuotaGb = (provider: StorageProvider, quotaGb: number | undefined) =>
+  quotaGb ?? PROVIDER_FREE_TIER_GB[provider] ?? undefined;
+
 const getProviderLabel = (provider: StorageProvider) => {
   switch (provider) {
     case "s3":
@@ -306,8 +322,9 @@ const buildStorageConnectionView = async (bucket: {
   const activeObjects = fileObjects.filter((fileObject) => !fileObject.node?.isDeleted).length;
 
   const bucketConfig = getBucketConfig(bucket.config);
-  const quotaBigInt = bucketConfig.quotaGb
-    ? BigInt(Math.round(bucketConfig.quotaGb * 1024 * 1024 * 1024))
+  const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, bucketConfig.quotaGb);
+  const quotaBigInt = resolvedQuotaGb
+    ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024))
     : null;
   const availableBigInt =
     quotaBigInt !== null ? (quotaBigInt > usedBytes ? quotaBigInt - usedBytes : 0n) : null;
@@ -613,6 +630,31 @@ const selectLeastUsedBucket = async () => {
     .bucket;
 };
 
+// Instead of rejecting an upload whose name collides with an existing file in
+// the same folder, find the next free "name (1).ext", "name (2).ext", ... —
+// matching the behavior users expect from Google Drive / Windows Explorer.
+const buildCandidateFileName = (fileName: string, attempt: number) => {
+  if (attempt === 0) return fileName;
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex <= 0) return `${fileName} (${attempt})`;
+  return `${fileName.slice(0, dotIndex)} (${attempt})${fileName.slice(dotIndex)}`;
+};
+
+const resolveUniqueFilePath = async (driveId: string, parentPath: string, fileName: string) => {
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidateName = buildCandidateFileName(fileName, attempt);
+    const candidatePath = `${parentPath}/${candidateName}`;
+    const existing = await prisma.node.findUnique({
+      where: { driveId_path: { driveId, path: candidatePath } },
+      select: { isDeleted: true },
+    });
+    if (!existing || existing.isDeleted) {
+      return { name: candidateName, path: candidatePath };
+    }
+  }
+  throw new StorageError("Could not find an available file name.", 409);
+};
+
 export const uploadFile = async ({
   userId,
   fileBuffer,
@@ -654,17 +696,13 @@ export const uploadFile = async ({
     parentPath = parentNode.path;
   }
 
-  const filePath = `${parentPath}/${safeName}`;
+  const { name: uniqueName, path: filePath } = await resolveUniqueFilePath(
+    drive.id,
+    parentPath,
+    safeName,
+  );
 
-  const existing = await prisma.node.findUnique({
-    where: { driveId_path: { driveId: drive.id, path: filePath } },
-  });
-
-  if (existing && !existing.isDeleted) {
-    throw new StorageError("A file already exists at this path.", 409);
-  }
-
-  const objectKey = `${userId}/${drive.id}/${Date.now()}_${safeName}`;
+  const objectKey = `${userId}/${drive.id}/${crypto.randomUUID()}_${uniqueName}`;
   const sizeBigInt = BigInt(sizeBytes);
   const s3Client = createS3Client(getBucketConfig(bucket.config));
 
@@ -688,7 +726,7 @@ export const uploadFile = async ({
           driveId: drive.id,
           parentId: parentId ?? null,
           type: "FILE",
-          name: safeName,
+          name: uniqueName,
           path: filePath,
           sizeBytes: sizeBigInt,
           mimeType,
@@ -1109,6 +1147,131 @@ export const deleteNode = async ({
   return { success: true };
 };
 
+// ─── Empty Trash ──────────────────────────────────────────────────────────────
+
+export const emptyTrash = async ({
+  userId,
+  driveId,
+}: {
+  userId: string;
+  driveId?: string;
+}) => {
+  const trashedNodes = await prisma.node.findMany({
+    where: {
+      isDeleted: true,
+      drive: driveId ? { id: driveId, ownerId: userId } : { ownerId: userId },
+      OR: [{ parentId: null }, { parent: { isDeleted: false } }],
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  let count = 0;
+  for (const node of trashedNodes) {
+    await deleteNode({ userId, nodeId: node.id });
+    count++;
+  }
+
+  return { success: true, count };
+};
+
+// ─── Auto Purge Expired Trash (30 Days Cron) ─────────────────────────────────
+
+export const purgeExpiredTrash = async (daysThreshold = 30) => {
+  const cutoffDate = new Date(Date.now() - daysThreshold * 24 * 60 * 60 * 1000);
+
+  const expiredNodes = await prisma.node.findMany({
+    where: {
+      isDeleted: true,
+      deletedAt: { lte: cutoffDate },
+      OR: [{ parentId: null }, { parent: { isDeleted: false } }],
+    },
+    select: {
+      id: true,
+      drive: { select: { ownerId: true } },
+    },
+  });
+
+  let purgedCount = 0;
+  for (const node of expiredNodes) {
+    try {
+      await deleteNode({ userId: node.drive.ownerId, nodeId: node.id });
+      purgedCount++;
+    } catch (err) {
+      console.error(`Failed to auto-purge trashed node ${node.id}:`, err);
+    }
+  }
+
+  return { success: true, purgedCount };
+};
+
+// ─── Storage Quota ────────────────────────────────────────────────────────────
+
+function formatBytes(bytes: bigint, decimals = 1): string {
+  if (bytes === 0n) return "0 B";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["B", "KB", "MB", "GB", "TB", "PB"];
+  const i = Math.floor(Math.log(Number(bytes)) / Math.log(k));
+  const num = Number(bytes) / Math.pow(k, i);
+  return `${parseFloat(num.toFixed(dm))} ${sizes[i]}`;
+}
+
+export const getUserStorageQuota = async ({
+  userId,
+  driveId,
+}: {
+  userId: string;
+  driveId?: string;
+}) => {
+  const drives = await prisma.drive.findMany({
+    where: driveId ? { id: driveId, ownerId: userId } : { ownerId: userId },
+  });
+
+  if (drives.length === 0) {
+    throw new StorageError("Drive not found.", 404);
+  }
+
+  const driveUsedBytes = drives.reduce((sum, d) => sum + d.usedBytes, 0n);
+
+  const buckets = await prisma.bucket.findMany({
+    where: { isActive: true },
+  });
+
+  const bucketSummaries = buckets.map((bucket) => {
+    const bConfig = getBucketConfig(bucket.config);
+    const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, bConfig.quotaGb);
+    return resolvedQuotaGb ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024)) : null;
+  });
+
+  const hasBucketQuotas = bucketSummaries.some((q) => q !== null);
+  const totalBucketQuota = hasBucketQuotas
+    ? bucketSummaries.reduce<bigint>((sum, q) => sum + (q ?? 0n), 0n)
+    : null;
+
+  // Default fallback quota if no bucket quota configured: 20 GB
+  const DEFAULT_QUOTA_BYTES = 20n * 1024n * 1024n * 1024n;
+  const totalBytes = totalBucketQuota ?? DEFAULT_QUOTA_BYTES;
+
+  const usedBytes = driveUsedBytes;
+  const availableBytes = totalBytes > usedBytes ? totalBytes - usedBytes : 0n;
+
+  const percentageUsed = totalBytes > 0n
+    ? Math.min(100, Math.round((Number(usedBytes) / Number(totalBytes)) * 10000) / 100)
+    : 0;
+
+  return {
+    usedBytes: usedBytes.toString(),
+    totalBytes: totalBytes.toString(),
+    availableBytes: availableBytes.toString(),
+    usedFormatted: formatBytes(usedBytes),
+    totalFormatted: formatBytes(totalBytes),
+    availableFormatted: formatBytes(availableBytes),
+    percentageUsed,
+  };
+};
+
 // ─── Download (presigned URL) ─────────────────────────────────────────────────
 
 export const downloadFile = async ({
@@ -1321,8 +1484,9 @@ export const getStorageDashboard = async (options?: StorageListOptions) => {
 
       const health = await getBucketHealth(bucket);
       const bConfig = getBucketConfig(bucket.config);
-      const quotaBigInt = bConfig.quotaGb
-        ? BigInt(Math.round(bConfig.quotaGb * 1024 * 1024 * 1024))
+      const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, bConfig.quotaGb);
+      const quotaBigInt = resolvedQuotaGb
+        ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024))
         : null;
       const availableBigInt =
         quotaBigInt !== null ? (quotaBigInt > usedBytes ? quotaBigInt - usedBytes : 0n) : null;
@@ -1362,8 +1526,9 @@ export const getStorageDashboard = async (options?: StorageListOptions) => {
       0n,
     );
     const sConfig = getBucketConfig(bucket.config);
-    const quotaBigInt = sConfig.quotaGb
-      ? BigInt(Math.round(sConfig.quotaGb * 1024 * 1024 * 1024))
+    const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, sConfig.quotaGb);
+    const quotaBigInt = resolvedQuotaGb
+      ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024))
       : null;
     return {
       isActive: bucket.isActive,

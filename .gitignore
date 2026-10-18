@@ -22,9 +22,18 @@ coverage
 .vercel
 
 # Build Outputs
+.next
 .next/
+**/.next
+**/.next/**
+.open-next
 .open-next/
+**/.open-next
+**/.open-next/**
+.wrangler
 .wrangler/
+**/.wrangler
+**/.wrangler/**
 out/
 build
 dist

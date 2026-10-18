@@ -40,6 +40,12 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -54,7 +60,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error((data as { message?: string }).message ?? "Request failed");
+    throw new ApiError((data as { message?: string }).message ?? "Request failed", res.status);
   }
 
   return res.json() as Promise<T>;

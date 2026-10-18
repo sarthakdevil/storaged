@@ -52,7 +52,7 @@ export function FileCard({
 
   return (
     <div
-      className="group relative bg-white border border-slate-100 hover:border-slate-200/80 rounded-3xl p-5 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md flex flex-col justify-between select-none min-h-[220px]"
+      className="file-card group relative min-w-0 bg-white border border-slate-100 hover:border-slate-200/80 rounded-3xl p-5 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md flex flex-col justify-between select-none min-h-[220px]"
       onClick={() => onOpen(node)}
     >
       {/* Favorite badge & Context menu */}
@@ -64,9 +64,10 @@ export function FileCard({
         <div ref={menuRef} onClick={(e) => e.stopPropagation()} className="relative">
           <button
             type="button"
-            className={`p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition ${menuOpen ? "bg-slate-100 text-slate-600" : ""}`}
+            className={`file-card-menu-trigger p-1.5 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition ${menuOpen ? "bg-slate-100 text-slate-600" : ""}`}
             onClick={() => setMenuOpen((v) => !v)}
             aria-label="Actions"
+            aria-expanded={menuOpen}
           >
             <MoreVertical size={16} />
           </button>

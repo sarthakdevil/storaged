@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -76,6 +76,7 @@ export const keys = {
   trash: ["trash"] as const,
   storageConnections: ["storage-connections"] as const,
   storageDashboard: ["storage-dashboard"] as const,
+  userStorageQuota: ["user-storage-quota"] as const,
 };
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -204,16 +205,36 @@ export function useEmptyTrash() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (nodes: TrashNode[]) =>
-      Promise.all(nodes.map((n) => api.del(`/files/${n.id}`))),
+    mutationFn: () => api.del("/files/trash"),
     onSuccess: () => {
       qc.setQueryData<TrashNode[]>(keys.trash, []);
+      qc.invalidateQueries({ queryKey: keys.nodes });
+      qc.invalidateQueries({ queryKey: keys.userStorageQuota });
       toast("Trash emptied");
     },
     onError: () => {
       qc.invalidateQueries({ queryKey: keys.trash });
       toast("Some items could not be deleted", "error");
     },
+  });
+}
+
+export type UserStorageQuota = {
+  usedBytes: string;
+  totalBytes: string;
+  availableBytes: string;
+  usedFormatted: string;
+  totalFormatted: string;
+  availableFormatted: string;
+  percentageUsed: number;
+};
+
+export function useUserStorageQuota() {
+  const { token } = useAuth();
+  return useQuery({
+    queryKey: keys.userStorageQuota,
+    queryFn: () => api.get<UserStorageQuota>("/storage/quota"),
+    enabled: !!token,
   });
 }
 
@@ -261,7 +282,7 @@ export function useToggleFavorite() {
   });
 }
 
-export function useUploadFile() {
+export function useUploadFile(batch = false) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ parentId, file }: { parentId: string | null; file: File }) => {
@@ -271,6 +292,7 @@ export function useUploadFile() {
       return api.upload<DriveNode>("/files", fd);
     },
     onSuccess: (node) => {
+      if (batch) return;
       qc.setQueryData<DriveNode[]>(keys.nodes, (prev) => {
         if (!prev) return [node];
         if (prev.some((n) => n.id === node.id)) return prev;
@@ -295,7 +317,7 @@ type UploadStatusResponse = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function useMultipartUploadFile() {
+export function useMultipartUploadFile(batch = false) {
   const qc = useQueryClient();
 
   return useMutation({
@@ -318,34 +340,39 @@ export function useMultipartUploadFile() {
       const totalParts = Math.ceil(file.size / init.partSizeBytes);
       const parts: { partNumber: number; etag: string }[] = [];
 
-      for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
-        const start = (partNumber - 1) * init.partSizeBytes;
-        const end = Math.min(partNumber * init.partSizeBytes, file.size);
-        const chunk = file.slice(start, end);
+      try {
+        for (let partNumber = 1; partNumber <= totalParts; partNumber++) {
+          const start = (partNumber - 1) * init.partSizeBytes;
+          const end = Math.min(partNumber * init.partSizeBytes, file.size);
+          const chunk = file.slice(start, end);
 
-        const { url } = await api.post<{ url: string }>(
-          `/uploads/${init.uploadSessionId}/part-url`,
-          { partNumber },
-        );
-
-        const putRes = await fetch(url, {
-          method: "PUT",
-          body: chunk,
-        });
-
-        if (!putRes.ok) {
-          throw new Error(`Part ${partNumber} upload failed`);
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              // Refresh the signed URL on retry, including after an expired URL.
+              const { url } = await api.post<{ url: string }>(
+                `/uploads/${init.uploadSessionId}/part-url`,
+                { partNumber },
+              );
+              const putRes = await fetch(url, { method: "PUT", body: chunk });
+              if (!putRes.ok) throw new Error(`Part ${partNumber} upload failed`);
+              const etag = putRes.headers.get("etag");
+              if (!etag) {
+                throw new Error(
+                  "Upload succeeded but ETag header is missing. Configure bucket CORS to expose the ETag header.",
+                );
+              }
+              parts.push({ partNumber, etag });
+              break;
+            } catch (error) {
+              if (attempt === 2) throw error;
+              await sleep(500 * 2 ** attempt);
+            }
+          }
+          onProgress?.(Math.min(99, Math.round((end / file.size) * 100)));
         }
-
-        const etag = putRes.headers.get("etag");
-        if (!etag) {
-          throw new Error(
-            "Upload succeeded but ETag header is missing. Configure bucket CORS to expose the ETag header.",
-          );
-        }
-
-        parts.push({ partNumber, etag });
-        onProgress?.(Math.round((parts.length / totalParts) * 100));
+      } catch (error) {
+        await api.post(`/uploads/${init.uploadSessionId}/abort`).catch(() => undefined);
+        throw error;
       }
 
       await api.post(`/uploads/${init.uploadSessionId}/complete`, { parts });
@@ -371,6 +398,7 @@ export function useMultipartUploadFile() {
       throw new Error("Upload is taking too long to finalize. Please check again in a moment.");
     },
     onSuccess: () => {
+      if (batch) return;
       qc.invalidateQueries({ queryKey: keys.nodes });
       qc.invalidateQueries({ queryKey: keys.storageDashboard });
     },

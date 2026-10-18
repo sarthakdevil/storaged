@@ -1,6 +1,9 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "storaged-frontend",
+  "routes": [
+    { "pattern": "storaged.sarthaksahu.dev", "custom_domain": true }
+  ],
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-06-27",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,6 +16,6 @@
     "head_sampling_rate": 1
   },
   "vars": {
-    "NEXT_PUBLIC_API_URL": "https://storaged-api.<your-workers-subdomain>.workers.dev/api"
+    "NEXT_PUBLIC_API_URL": "https://storaged-api.sarthaksahu.dev/api"
   }
 }

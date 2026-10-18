@@ -90,11 +90,11 @@ export function PreviewModal({ node, onClose }: Props) {
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="w-full max-w-4xl sm:max-w-4xl h-[80vh] p-0 overflow-hidden rounded-2xl border border-slate-100 shadow-2xl flex flex-col">
+      <DialogContent className="preview-modal w-full max-w-4xl sm:max-w-4xl h-[80dvh] p-0 overflow-hidden rounded-2xl border border-slate-100 shadow-2xl flex flex-col">
         <DialogHeader className="px-6 py-4 border-b border-slate-100 flex flex-row items-center justify-between text-left space-y-0 shrink-0">
-          <div>
+          <div className="min-w-0 flex-1">
             <DialogTitle className="font-display text-base font-semibold text-slate-900 truncate">Preview</DialogTitle>
-            <DialogDescription className="text-xs text-slate-500 mt-1">
+            <DialogDescription className="text-xs text-slate-500 mt-1 break-all">
               {node.name} · {formatSize(node.sizeBytes)}
             </DialogDescription>
           </div>

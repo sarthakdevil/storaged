@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, LayoutGrid, HardDrive, Trash2, Key, ChevronsUpDown } from "lucide-react";
+import { LogOut, LayoutGrid, HardDrive, Trash2, Key, ChevronsUpDown, Menu } from "lucide-react";
 import { useStorageDashboard } from "../lib/queries";
 import React, { useEffect, useRef, useState } from "react";
 import { StorageConnection } from "../lib/api";
-import { useAuth, ProgressBar } from "@repo/ui";
+import { useAuth, ProgressBar, Dialog, DialogContent, DialogTitle, DialogTrigger } from "@repo/ui";
 
 function formatBytes(bytes: bigint | number | string | null | undefined) {
   if (bytes === null || bytes === undefined) return "—";
@@ -32,6 +32,9 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => setMobileOpen(false), [pathname]);
 
   async function handleLogout() {
     await logout();
@@ -47,7 +50,7 @@ export function Sidebar() {
         .slice(0, 2)
     : user?.email?.slice(0, 2).toUpperCase() ?? "??";
 
-  return (
+  const navigation = (
     <aside className="app-sidebar w-68 shrink-0 h-screen flex flex-col bg-white border-r border-slate-100 text-slate-800">
       {/* Brand */}
       <div className="app-sidebar-brand flex items-center gap-2.5 px-6 py-6 border-b border-slate-100/50">
@@ -70,6 +73,8 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
+              onClick={() => setMobileOpen(false)}
+              aria-current={active ? "page" : undefined}
               className={`flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium transition-colors ${
                 active
                   ? "bg-surface-soft border-l-2 border-neon-violet pl-3.5 text-electric-indigo"
@@ -93,6 +98,24 @@ export function Sidebar() {
         <AccountMenu initials={initials} name={user?.name} email={user?.email} onLogout={handleLogout} />
       </div>
     </aside>
+  );
+
+  return (
+    <>
+      <div className="desktop-navigation">{navigation}</div>
+      <div className="mobile-navigation-bar">
+        <Link href="/drive" className="font-display font-bold tracking-widest">STORAGED</Link>
+        <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
+          <DialogTrigger asChild>
+            <button className="mobile-menu-button" aria-label="Open navigation"><Menu size={22} /></button>
+          </DialogTrigger>
+          <DialogContent className="mobile-navigation-panel translate-x-0 translate-y-0" aria-describedby={undefined}>
+            <DialogTitle className="sr-only">Navigation</DialogTitle>
+            {navigation}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </>
   );
 }
 

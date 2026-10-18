@@ -64,7 +64,7 @@ export default function FavoritesPage() {
             <p className="text-xs text-slate-400">Star files from the drive to see them here</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          <div className="file-grid grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
             {nodes.map((node) => (
               <FileCard
                 key={node.id}

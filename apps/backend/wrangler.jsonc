@@ -10,16 +10,21 @@
   },
   "vars": {
     "ENVIRONMENT": "production",
-    "FRONTEND_ORIGIN": "http://localhost:3000",
+    "FRONTEND_ORIGIN": "https://storaged-frontend.vercel.app",
+    "FRONTEND_ORIGINS": "https://storaged.sarthaksahu.dev,https://storaged-frontend.sarthhttpsdynamiclegendhomeblog20200922gamakrajesh2005.workers.dev",
+  },
+
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "43c306f298254cc6b475dbb8e14ae869" }
+  ],
+  "triggers": {
+    "crons": ["0 0 * * *"]
   }
 
   // Add these bindings after creating Cloudflare resources:
   //
   // "r2_buckets": [
   //   { "binding": "STORAGE_BUCKET", "bucket_name": "storaged-files" }
-  // ],
-  // "hyperdrive": [
-  //   { "binding": "HYPERDRIVE", "id": "<hyperdrive-id>" }
   // ],
   //
   // Durable upload finalization (replaces the old pg-boss worker).

@@ -8,6 +8,11 @@ type S3Config = {
   forcePathStyle: boolean;
 };
 
+// Third-party S3-compatible endpoints can be unreachable or stall mid-response.
+// Without a bound, a hung TCP/TLS handshake keeps the Worker's request open
+// until the platform force-kills it as "hung code" instead of failing fast.
+const REQUEST_TIMEOUT_MS = 10_000;
+
 export const createS3Client = (config: S3Config) => {
   return new S3Client({
     endpoint: config.endpointUrl,
@@ -17,5 +22,6 @@ export const createS3Client = (config: S3Config) => {
       secretAccessKey: config.secretAccessKey,
     },
     forcePathStyle: config.forcePathStyle,
+    requestHandler: { requestTimeout: REQUEST_TIMEOUT_MS },
   });
 };

@@ -9,7 +9,7 @@ import { bufferToHex, hexToBuffer } from "./hash.js";
 
 const ALGORITHM = "PBKDF2";
 const HASH = "SHA-256";
-const ITERATIONS = 200_000;
+const ITERATIONS = 100_000; // Cloudflare Workers' WebCrypto PBKDF2 caps out at 100,000
 const KEY_LENGTH = 64; // bytes → 128 hex chars
 
 const VERSION_PREFIX = "pbkdf2v1";

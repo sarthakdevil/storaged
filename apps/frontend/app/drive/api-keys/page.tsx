@@ -82,7 +82,7 @@ function CreateKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200/60">
+      <div className="custom-modal bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200/60">
         <div className="px-6 pt-6 pb-5 border-b border-slate-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -156,7 +156,7 @@ function RevealKeyModal({ created, onClose }: { created: CreatedApiKey; onClose:
   const [visible, setVisible] = useState(false);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in zoom-in-95 duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200/60 relative">
+      <div className="custom-modal bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200/60 relative">
         <div className="px-6 pt-6 pb-5 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
@@ -170,7 +170,7 @@ function RevealKeyModal({ created, onClose }: { created: CreatedApiKey; onClose:
         </div>
 
         <div className="px-6 py-6 flex flex-col gap-5">
-          <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 shadow-inner">
+          <div className="api-secret bg-slate-900 rounded-xl p-4 border border-slate-800 shadow-inner">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
@@ -221,6 +221,7 @@ const ENDPOINTS = [
   { method: "POST",   path: "/folders",            desc: "Create a folder",                     body: '{ "name": "string", "parentId": "string?" }' },
   { method: "PATCH",  path: "/files/:id",          desc: "Rename or update a file/folder",      body: '{ "name": "string?", "description": "string?" }' },
   { method: "GET",    path: "/files/:id/download", desc: "Get a presigned download URL",        note: "Query: ?expiresIn=<seconds>  (default: 3600)" },
+  { method: "GET",    path: "/files/:id/preview",  desc: "Get a presigned preview URL",         note: "Query: ?expiresIn=<seconds>  (default: 900)" },
   { method: "DELETE", path: "/files/:id",          desc: "Permanently delete a file or folder" },
 ];
 
@@ -238,11 +239,11 @@ function ApiReference({ apiBase }: { apiBase: string }) {
     <div className="rounded-2xl bg-[#0A0F1C] border border-white/10 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] overflow-hidden mt-8 transition-all duration-500">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-8 py-6 text-left hover:bg-white/5 transition-all group relative overflow-hidden"
+        className="w-full flex items-center justify-between px-4 sm:px-8 py-6 text-left hover:bg-white/5 transition-all group relative overflow-hidden"
       >
         <div className="absolute inset-0 bg-linear-to-r from-neon-violet/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
-        <div className="flex items-center gap-5 relative z-10">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-5 relative z-10">
           <div className="w-12 h-12 bg-linear-to-br from-neon-violet/20 to-electric-indigo/20 rounded-2xl flex items-center justify-center border border-white/10">
             <Terminal size={20} className="text-neon-violet" />
           </div>
@@ -308,22 +309,22 @@ function ApiReference({ apiBase }: { apiBase: string }) {
                     <span className={`text-[11px] font-bold px-3 py-1.5 rounded-lg font-mono tracking-wider border shadow-sm ${METHOD_STYLES_DARK[ep.method]}`}>
                       {ep.method}
                     </span>
-                    <code className="text-[15px] font-mono text-white font-semibold">{ep.path}</code>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                    <code className="break-all text-[15px] font-mono text-white font-semibold">{ep.path}</code>
+                    <div className="transition-opacity ml-2">
                       <CopyBtn text={`${apiBase}${ep.path}`} label="Copy" />
                     </div>
                   </div>
                   <p className="text-sm text-slate-400 font-medium ml-1 mb-3">{ep.desc}</p>
                   
                   {ep.body && (
-                    <div className="bg-black/40 rounded-xl p-3 border border-white/5 inline-block">
+                    <div className="bg-black/40 rounded-xl p-3 border border-white/5 max-w-full inline-block">
                       <p className="text-[10px] text-slate-500 mb-1.5 uppercase font-bold tracking-widest">Payload</p>
-                      <code className="text-xs font-mono text-amber-300/90">{ep.body}</code>
+                      <code className="break-all text-xs font-mono text-amber-300/90">{ep.body}</code>
                     </div>
                   )}
                   {ep.note && (
-                    <div className="mt-2 inline-block">
-                      <span className="text-xs text-neon-violet bg-neon-violet/10 rounded-lg px-3 py-1.5 font-mono border border-neon-violet/20">{ep.note}</span>
+                    <div className="mt-2 max-w-full inline-block">
+                      <span className="break-words text-xs text-neon-violet bg-neon-violet/10 rounded-lg px-3 py-1.5 font-mono border border-neon-violet/20">{ep.note}</span>
                     </div>
                   )}
                 </div>
@@ -341,7 +342,7 @@ function KeyRow({ apiKey }: { apiKey: ApiKey }) {
   const isExpired = apiKey.expiresAt ? new Date(apiKey.expiresAt) < new Date() : false;
 
   return (
-    <div className={`flex items-center gap-5 px-8 py-5 border-b border-slate-100/60 last:border-0 hover:bg-neon-violet/5 transition-all duration-300 group relative overflow-hidden ${isExpired ? "opacity-60 grayscale-[0.5]" : ""}`}>
+    <div className={`api-key-row flex items-center gap-5 px-4 sm:px-8 py-5 border-b border-slate-100/60 last:border-0 hover:bg-neon-violet/5 transition-all duration-300 group relative overflow-hidden ${isExpired ? "opacity-60 grayscale-[0.5]" : ""}`}>
       <div className="absolute left-0 top-0 bottom-0 w-1 bg-neon-violet opacity-0 group-hover:opacity-100 transition-opacity" />
 
       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border transition-transform group-hover:scale-110 duration-300 ${isExpired ? "bg-slate-100 border-slate-200" : "bg-white border-neon-violet/20 shadow-neon-violet/10"}`}>
@@ -371,7 +372,7 @@ function KeyRow({ apiKey }: { apiKey: ApiKey }) {
       <button
         onClick={() => revoke.mutate(apiKey.id)}
         disabled={revoke.isPending}
-        className="p-3 rounded-xl text-slate-400 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100 -translate-x-4 group-hover:translate-x-0"
+        className="p-3 rounded-xl text-slate-400 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 hover:shadow-sm transition-all shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100"
         aria-label="Revoke key"
       >
         {revoke.isPending ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
@@ -388,7 +389,7 @@ export default function ApiKeysPage() {
   const activeKeys = keys.filter(k => !k.expiresAt || new Date(k.expiresAt) >= new Date()).length;
 
   return (
-    <div className="drive-view flex flex-col min-h-full bg-surface relative pb-20">
+    <div className="api-keys-view drive-view flex flex-col min-h-full bg-surface relative pb-20">
       {/* Decorative background blurs */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-neon-violet/10 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-electric-indigo/10 rounded-full blur-[100px] pointer-events-none" />
@@ -436,7 +437,7 @@ export default function ApiKeysPage() {
 
         {/* Main Keys Card */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
-          <div className="px-8 py-6 border-b border-slate-100/60 flex items-center justify-between bg-white/50">
+          <div className="px-4 sm:px-8 py-6 border-b border-slate-100/60 flex items-center justify-between bg-white/50">
             <div>
               <h2 className="font-display text-lg font-extrabold text-slate-900">Authentication Keys</h2>
               <p className="text-sm text-slate-500 font-medium mt-1">Manage your programmatic access tokens</p>

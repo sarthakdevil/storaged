@@ -77,7 +77,7 @@ export default function SharePage({ params }: { params: Promise<{ token: string 
           {data && (
             <div className="flex flex-col">
               {/* Top Section: File Info */}
-              <div className="p-12 flex flex-col items-center text-center border-b border-slate-100">
+              <div className="p-6 sm:p-12 flex flex-col items-center text-center border-b border-slate-100">
                 <div className="w-24 h-24 bg-neon-violet/10 rounded-3xl flex items-center justify-center mb-8 shadow-sm">
                   <FileText size={48} className="text-electric-indigo" />
                 </div>
@@ -97,7 +97,7 @@ export default function SharePage({ params }: { params: Promise<{ token: string 
               </div>
 
               {/* Bottom Section: Actions */}
-              <div className="p-12 bg-surface-soft/60 flex flex-col items-center">
+              <div className="p-6 sm:p-12 bg-surface-soft/60 flex flex-col items-center">
                 <div className="w-full max-w-lg flex flex-col sm:flex-row gap-4">
                   <a
                     href={data.url}

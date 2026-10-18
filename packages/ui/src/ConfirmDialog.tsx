@@ -31,7 +31,7 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-md">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28)]">
+      <div className="custom-modal w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.28)]">
         <div className="flex items-start gap-4 px-6 py-5 border-b border-slate-100 bg-slate-50/80">
           <div
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
@@ -42,7 +42,7 @@ export function ConfirmDialog({
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+            <p className="mt-1 break-words text-sm leading-6 text-slate-500">{description}</p>
           </div>
           <button
             onClick={onCancel}

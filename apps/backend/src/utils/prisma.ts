@@ -27,7 +27,8 @@ export const configurePrisma = (connectionString: string) => {
   const pool = new Pool({
     connectionString,
     max: 1,
-    idleTimeoutMillis: 100,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
   });
   currentPool = pool;
   

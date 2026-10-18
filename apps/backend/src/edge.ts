@@ -25,14 +25,17 @@ import {
   deleteNode,
   deleteStorageConnection,
   downloadFile,
+  emptyTrash,
   getStorageConnection,
   getStorageDashboard,
+  getUserStorageQuota,
   isStorageError,
   listFiles,
   listShareLinks,
   listStorageConnections,
   listTrash,
   previewFile,
+  purgeExpiredTrash,
   resolveShareLink,
   restoreNode,
   revokeShareLink,
@@ -51,6 +54,7 @@ import { requireAuth, requireApiKey, getBearerToken } from "@repo/auth";
 type Env = {
   ENVIRONMENT?: string;
   FRONTEND_ORIGIN?: string;
+  FRONTEND_ORIGINS?: string;
   FRONTEND_URL?: string;
   APP_URL?: string;
   DATABASE_URL?: string;
@@ -109,13 +113,15 @@ const getCorsHeaders = (request: Request, env: Env): HeadersInit => {
   const allowedOrigin = env.FRONTEND_ORIGIN ?? "*";
 
   const isLocal = origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
-  const isAllowed = origin === allowedOrigin || isLocal;
+  const additionalOrigins = (env.FRONTEND_ORIGINS ?? "").split(",").map((value) => value.trim());
+  const isAllowed = origin === allowedOrigin || additionalOrigins.includes(origin) || isLocal;
 
   return {
     "access-control-allow-origin": isAllowed ? origin : allowedOrigin,
     "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,x-api-key",
     "access-control-max-age": "86400",
+    "vary": "Origin",
   };
 };
 
@@ -289,6 +295,14 @@ const routes: Route[] = [
     const userId = await requireAuth(request, prisma);
     return json(await listTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
   }),
+  route("DELETE", "/api/files/trash", async ({ request, url }) => {
+    const userId = await requireAuth(request, prisma);
+    return json(await emptyTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+  }),
+  route("GET", "/api/storage/quota", async ({ request, url }) => {
+    const userId = await requireAuth(request, prisma);
+    return json(await getUserStorageQuota({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+  }),
   route("POST", "/api/files/folders", async ({ request }) => {
     const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ name?: string; driveId?: string; parentId?: string }>(request);
@@ -459,6 +473,11 @@ const routes: Route[] = [
     const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
     return json(await downloadFile({ userId, nodeId: params.id, expiresIn }));
   }),
+  route("GET", "/api/v1/files/:id/preview", async ({ request, url, params, ctx }) => {
+    const userId = await requireApiKey(request, prisma, ctx);
+    const expiresIn = Number(url.searchParams.get("expiresIn") ?? 900);
+    return json(await previewFile({ userId, nodeId: params.id, expiresIn }));
+  }),
   route("PATCH", "/api/v1/files/:id", async ({ request, params, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
     const body = await bodyJson<{ name?: string; description?: string }>(request);
@@ -467,6 +486,28 @@ const routes: Route[] = [
   route("DELETE", "/api/v1/files/:id", async ({ request, params, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
     return json(await deleteNode({ userId, nodeId: params.id }));
+  }),
+
+  // API Key Trash & Quota Routes
+  route("GET", "/api/v1/trash", async ({ request, url, ctx }) => {
+    const userId = await requireApiKey(request, prisma, ctx);
+    return json(await listTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+  }),
+  route("POST", "/api/v1/files/:id/trash", async ({ request, params, ctx }) => {
+    const userId = await requireApiKey(request, prisma, ctx);
+    return json(await trashNode({ userId, nodeId: params.id }));
+  }),
+  route("POST", "/api/v1/files/:id/restore", async ({ request, params, ctx }) => {
+    const userId = await requireApiKey(request, prisma, ctx);
+    return json(await restoreNode({ userId, nodeId: params.id }));
+  }),
+  route("DELETE", "/api/v1/trash", async ({ request, url, ctx }) => {
+    const userId = await requireApiKey(request, prisma, ctx);
+    return json(await emptyTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+  }),
+  route("GET", "/api/v1/storage/quota", async ({ request, url, ctx }) => {
+    const userId = await requireApiKey(request, prisma, ctx);
+    return json(await getUserStorageQuota({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
   }),
 
   // ── Admin — Stats ─────────────────────────────────────────────────────────
@@ -523,6 +564,10 @@ export default {
     } catch (error) {
       return withCors(handleError(error), request, env);
     } finally {
+      // Workers isolate I/O per request — a `pg` Pool's TCP connection can't
+      // be safely reused across separate fetch() invocations. Hyperdrive
+      // keeps the real upstream Postgres connection warm, so tearing this
+      // down and reconnecting each request stays cheap.
       ctx.waitUntil(disconnectPrisma());
     }
   },
@@ -542,5 +587,12 @@ export default {
         message.retry();
       }
     }
+  },
+
+  // Cloudflare Workers Scheduled Event handler (Cron Trigger).
+  // Automatically purges items from the trash older than 30 days.
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    configureForRequest(env);
+    ctx.waitUntil(purgeExpiredTrash());
   },
 };

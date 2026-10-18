@@ -18,7 +18,7 @@ npm run preview:cloudflare --workspace=backend
 npm run preview:cloudflare --workspace=frontend
 ```
 
-Backend preview runs on `http://localhost:8788`. Frontend preview uses the OpenNext preview server.
+Backend preview runs on `http://localhost:7`. Frontend preview uses the OpenNext preview server.
 
 ## Deploy
 

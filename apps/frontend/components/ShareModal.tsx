@@ -82,7 +82,7 @@ export function ShareModal({ node, onClose }: Props) {
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl p-6 sm:p-8 rounded-[2rem] border border-slate-100 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+      <DialogContent className="share-modal max-w-2xl p-6 sm:p-8 rounded-[2rem] border border-slate-100 shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
         <DialogHeader className="text-left flex flex-row items-center gap-5 space-y-0 pb-6 border-b border-slate-100">
           <div className="w-14 h-14 bg-neon-violet/10 rounded-2xl flex items-center justify-center shrink-0 ring-4 ring-neon-violet/10">
             <Share2 size={24} className="text-electric-indigo" />
@@ -91,7 +91,7 @@ export function ShareModal({ node, onClose }: Props) {
             <DialogTitle className="font-display font-extrabold text-slate-900 text-xl sm:text-2xl mb-1">
               Share File
             </DialogTitle>
-            <p className="text-sm font-semibold text-slate-500 truncate max-w-[250px] sm:max-w-[350px]">
+            <p className="text-sm font-semibold text-slate-500 truncate">
               {node.name}
             </p>
           </div>
@@ -135,7 +135,7 @@ export function ShareModal({ node, onClose }: Props) {
         </div>
 
         {/* Existing links */}
-        <div className="flex-1 overflow-y-auto py-6 min-h-[200px] pr-1">
+        <div className="flex-1 overflow-y-auto py-6 min-h-0 pr-1">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-500">
               <Loader2 size={24} className="animate-spin text-electric-indigo" />

@@ -32,7 +32,7 @@ export function FileListItem({
 
   return (
     <div
-      className="flex items-center gap-6 px-6 py-4 bg-white border border-slate-200 rounded-2xl hover:shadow-sm transition cursor-pointer min-h-22 overflow-visible"
+      className="file-list-row flex items-center gap-6 px-6 py-4 bg-white border border-slate-200 rounded-2xl hover:shadow-sm transition cursor-pointer min-h-22 overflow-visible"
       onClick={() => onOpen(node)}
     >
       <IconBadge icon={Icon} tone={tone} size="lg" className="w-14 h-14 rounded-2xl" />
@@ -47,7 +47,7 @@ export function FileListItem({
         </p>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0 pr-1">
+      <div className="file-list-actions flex items-center gap-2 shrink-0 pr-1">
         {isFile && (
           <TooltipButton label="Preview file">
             <button

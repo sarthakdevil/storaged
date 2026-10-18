@@ -47,7 +47,7 @@ export default function TrashPage() {
           </div>
           {nodes.length > 0 && (
             <button
-              onClick={() => emptyTrash.mutate(nodes)}
+              onClick={() => emptyTrash.mutate()}
               disabled={emptyTrash.isPending}
               className="drive-action-button drive-action-secondary ml-auto flex items-center gap-2 border-red-200 text-red-600 hover:bg-red-50"
             >
@@ -147,7 +147,7 @@ function TrashListItem({
   const name = node.originalName ?? "(unnamed)";
 
   return (
-    <div className="flex items-center gap-6 rounded-2xl border border-slate-200 bg-white px-6 py-5 transition hover:shadow-sm min-h-24">
+    <div className="trash-list-row flex items-center gap-6 rounded-2xl border border-slate-200 bg-white px-6 py-5 transition hover:shadow-sm min-h-24">
       <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl ${node.type === "FOLDER" ? "bg-neon-violet/10" : "bg-slate-50"}`}>
         <Icon size={24} className={node.type === "FOLDER" ? "text-electric-indigo" : "text-slate-500"} />
       </div>

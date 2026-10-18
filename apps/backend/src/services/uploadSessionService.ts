@@ -74,6 +74,31 @@ const sanitizeFileName = (originalName: string) => {
   return trimmed.replace(/[^\w.\-]/g, "_");
 };
 
+// Instead of rejecting an upload whose name collides with an existing file in
+// the same folder, find the next free "name (1).ext", "name (2).ext", ... —
+// matching the behavior users expect from Google Drive / Windows Explorer.
+const buildCandidateFileName = (fileName: string, attempt: number) => {
+  if (attempt === 0) return fileName;
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex <= 0) return `${fileName} (${attempt})`;
+  return `${fileName.slice(0, dotIndex)} (${attempt})${fileName.slice(dotIndex)}`;
+};
+
+const resolveUniqueFilePath = async (driveId: string, parentPath: string, fileName: string) => {
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidateName = buildCandidateFileName(fileName, attempt);
+    const candidatePath = `${parentPath}/${candidateName}`;
+    const existing = await prisma.node.findUnique({
+      where: { driveId_path: { driveId, path: candidatePath } },
+      select: { isDeleted: true },
+    });
+    if (!existing || existing.isDeleted) {
+      return { name: candidateName, path: candidatePath };
+    }
+  }
+  throw new UploadError("Could not find an available file name.", 409);
+};
+
 const choosePartSizeBytes = (sizeBytes: number) => {
   // S3 multipart: all parts (except last) must be >= 5MB; max 10,000 parts.
   // 3GB target: 32MB => ~96 parts.
@@ -160,18 +185,13 @@ export const initiateMultipartUpload = async ({
     parentPath = parentNode.path;
   }
 
-  const filePath = `${parentPath}/${safeName}`;
-
-  const existing = await prisma.node.findUnique({
-    where: { driveId_path: { driveId: drive.id, path: filePath } },
-  });
-
-  if (existing && !existing.isDeleted) {
-    throw new UploadError("A file already exists at this path.", 409);
-  }
+  // Only claims a display name for now — the multipart upload can take a
+  // while, so the real collision check happens again at finalize time,
+  // right before the Node is actually created.
+  const { name: uniqueName } = await resolveUniqueFilePath(drive.id, parentPath, safeName);
 
   const bucket = await selectLeastUsedBucket();
-  const objectKey = `${userId}/${drive.id}/${Date.now()}_${safeName}`;
+  const objectKey = `${userId}/${drive.id}/${crypto.randomUUID()}_${uniqueName}`;
   const partSizeBytes = choosePartSizeBytes(sizeBytes);
 
   const s3Client = createS3Client(getBucketConfig(bucket.config));
@@ -200,7 +220,7 @@ export const initiateMultipartUpload = async ({
       userId,
       driveId: drive.id,
       parentId: parentId ?? null,
-      fileName: safeName,
+      fileName: uniqueName,
       mimeType: mimeType ?? null,
       sizeBytes: BigInt(sizeBytes),
       partSizeBytes,
@@ -490,7 +510,6 @@ export const finalizeUploadNow = async ({
   }
 
   // Create node + file object (same semantics as old uploadFile, but bytes are already in storage).
-  const safeName = session.fileName;
   let parentPath = "";
   if (session.parentId) {
     const parentNode = await prisma.node.findFirst({
@@ -509,49 +528,66 @@ export const finalizeUploadNow = async ({
     parentPath = parentNode.path;
   }
 
-  const filePath = `${parentPath}/${safeName}`;
-
   const sizeBigInt = session.sizeBytes;
 
+  // The multipart upload may have taken a while, so the name claimed at
+  // initiate time could have been taken by another upload since. Re-resolve
+  // a free name right before creating the Node, and retry a few times in
+  // case of a genuine race against a concurrent finalize.
+  const isUniqueConstraintError = (error: unknown) =>
+    Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "P2002");
+
   let result;
-  try {
-    result = await prisma.$transaction(async (tx) => {
-      const node = await tx.node.create({
-        data: {
-          driveId: session.driveId,
-          parentId: session.parentId ?? null,
-          type: "FILE",
-          name: safeName,
-          path: filePath,
-          sizeBytes: sizeBigInt,
-          mimeType: session.mimeType ?? undefined,
-          createdById: session.userId,
-        },
-      });
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { name, path } = await resolveUniqueFilePath(session.driveId, parentPath, session.fileName);
 
-      await tx.fileObject.create({
-        data: { nodeId: node.id, bucketId: session.bucketId, objectKey: session.objectKey },
-      });
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const node = await tx.node.create({
+          data: {
+            driveId: session.driveId,
+            parentId: session.parentId ?? null,
+            type: "FILE",
+            name,
+            path,
+            sizeBytes: sizeBigInt,
+            mimeType: session.mimeType ?? undefined,
+            createdById: session.userId,
+          },
+        });
 
-      await tx.drive.update({
-        where: { id: session.driveId },
-        data: { usedBytes: { increment: sizeBigInt } },
-      });
+        await tx.fileObject.create({
+          data: { nodeId: node.id, bucketId: session.bucketId, objectKey: session.objectKey },
+        });
 
-      await tx.uploadSession.update({
-        where: { id: session.id },
-        data: { status: "COMPLETED", completedAt: new Date(), nodeId: node.id },
-      });
+        await tx.drive.update({
+          where: { id: session.driveId },
+          data: { usedBytes: { increment: sizeBigInt } },
+        });
 
-      return node;
-    });
-  } catch (error) {
-    const message =
-      error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "P2002"
-        ? "A file already exists at this path."
-        : error instanceof Error
-          ? error.message
-          : "Finalize failed.";
+        await tx.uploadSession.update({
+          where: { id: session.id },
+          data: { status: "COMPLETED", completedAt: new Date(), nodeId: node.id },
+        });
+
+        return node;
+      });
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+      if (!isUniqueConstraintError(error)) break;
+      // Someone else just took `path` — loop around and resolve a new one.
+    }
+  }
+
+  if (lastError || !result) {
+    const message = isUniqueConstraintError(lastError)
+      ? "Could not find an available file name."
+      : lastError instanceof Error
+        ? lastError.message
+        : "Finalize failed.";
 
     await prisma.uploadSession.update({
       where: { id: session.id },

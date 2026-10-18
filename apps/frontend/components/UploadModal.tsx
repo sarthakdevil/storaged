@@ -1,145 +1,271 @@
 "use client";
 
-import { useState, useRef, DragEvent, ChangeEvent } from "react";
-import { Upload, File, CheckCircle, Loader2, AlertCircle, X } from "lucide-react";
-import { useToast, Dialog, DialogContent, DialogHeader, DialogTitle, Button, formatSize } from "@repo/ui";
-import { useMultipartUploadFile, useUploadFile } from "../lib/queries";
+import {
+  useEffect,
+  useState,
+  useRef,
+  type DragEvent,
+  type ChangeEvent,
+} from "react";
+import { Loader2, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useToast,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Button,
+  formatSize,
+} from "@repo/ui";
+import { keys, useMultipartUploadFile, useUploadFile } from "../lib/queries";
+import { api, ApiError, type DriveNode } from "../lib/api";
+import {
+  createFolderResolver,
+  MAX_FILE_SIZE,
+  MULTIPART_THRESHOLD,
+  readDroppedFiles,
+  runUploadQueue,
+  selectFiles,
+  type SelectedFile,
+} from "../lib/folder-upload";
 
-type FileStatus = "pending" | "uploading" | "done" | "error";
-type QueueItem = { file: File; status: FileStatus; error?: string; progress?: number };
+type QueueItem = SelectedFile & {
+  status: "pending" | "uploading" | "done" | "error";
+  error?: string;
+  progress?: number;
+};
+const PAGE_SIZE = 50;
 
-type Props = {
+export function UploadModal({
+  parentId,
+  onClose,
+}: {
   parentId: string | null;
   onClose: () => void;
-};
-
-export function UploadModal({ parentId, onClose }: Props) {
+}) {
   const { toast } = useToast();
-  const upload = useUploadFile();
-  const multipartUpload = useMultipartUploadFile();
+  const qc = useQueryClient();
+  const upload = useUploadFile(true);
+  const multipartUpload = useMultipartUploadFile(true);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [page, setPage] = useState(0);
+  const busy = uploading || reading;
+  const busyRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
+  const resolverRef = useRef<ReturnType<typeof createFolderResolver> | null>(
+    null,
+  );
 
-  function addFiles(files: FileList | null) {
-    if (!files) return;
+  useEffect(() => {
+    if (!busy) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy]);
+
+  function addFiles(files: SelectedFile[]) {
     setQueue((prev) => [
       ...prev,
-      ...Array.from(files).map((file) => ({ file, status: "pending" as FileStatus })),
+      ...files.map(
+        (item): QueueItem => ({
+          ...item,
+          status: item.file.size > MAX_FILE_SIZE ? "error" : "pending",
+          error:
+            item.file.size > MAX_FILE_SIZE
+              ? "File exceeds the 3 GB limit"
+              : undefined,
+        }),
+      ),
     ]);
   }
 
-  function onDrop(e: DragEvent) {
-    e.preventDefault();
+  async function onDrop(event: DragEvent) {
+    event.preventDefault();
     setDragging(false);
-    addFiles(e.dataTransfer.files);
+    if (busyRef.current) return;
+    const entries = Array.from(event.dataTransfer.items).map(
+      (item) => item.webkitGetAsEntry?.() ?? null,
+    );
+    const fallback = selectFiles(event.dataTransfer.files);
+    busyRef.current = true;
+    setReading(true);
+    try {
+      addFiles(
+        entries.some(Boolean)
+          ? await readDroppedFiles(
+              entries.filter(
+                (entry): entry is FileSystemEntry => entry !== null,
+              ),
+            )
+          : fallback,
+      );
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Could not read folder",
+        "error",
+      );
+    } finally {
+      busyRef.current = false;
+      setReading(false);
+    }
   }
 
-  function onInputChange(e: ChangeEvent<HTMLInputElement>) {
-    addFiles(e.target.files);
-    if (inputRef.current) inputRef.current.value = "";
+  function onInputChange(event: ChangeEvent<HTMLInputElement>) {
+    if (!busyRef.current && event.target.files)
+      addFiles(selectFiles(event.target.files));
+    event.target.value = "";
   }
 
-  function remove(idx: number) {
-    setQueue((prev) => prev.filter((_, i) => i !== idx));
+  function update(index: number, changes: Partial<QueueItem>) {
+    setQueue((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...changes };
+      return next;
+    });
   }
 
   async function startUpload() {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setUploading(true);
-    let successCount = 0;
-
-    const multipartThreshold = 450 * 1024 * 1024; // ~450MB
-
-    for (let i = 0; i < queue.length; i++) {
-      if (queue[i].status !== "pending") continue;
-
-      setQueue((prev) => {
-        const next = [...prev];
-        next[i] = { ...next[i], status: "uploading", progress: 0 };
-        return next;
-      });
-
-      try {
-        const file = queue[i].file;
-        if (file.size > multipartThreshold) {
-          await multipartUpload.mutateAsync({
-            parentId,
-            file,
-            onProgress: (pct) => {
-              setQueue((prev) => {
-                const next = [...prev];
-                if (!next[i]) return prev;
-                next[i] = { ...next[i], progress: pct };
-                return next;
+    let successes = 0;
+    let failures = 0;
+    if (!resolverRef.current) {
+      resolverRef.current = createFolderResolver(
+        parentId,
+        async (name, folderParentId) => {
+          for (let attempt = 0; attempt < 1000; attempt++) {
+            try {
+              const folder = await api.post<DriveNode>("/files/folders", {
+                name: attempt === 0 ? name : `${name}_${attempt}`,
+                parentId: folderParentId ?? undefined,
               });
-            },
-          });
-        } else {
-          await upload.mutateAsync({ parentId, file });
-        }
-        setQueue((prev) => {
-          const next = [...prev];
-          next[i] = { ...next[i], status: "done", progress: 100 };
-          return next;
-        });
-        successCount++;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Upload failed";
-        setQueue((prev) => {
-          const next = [...prev];
-          next[i] = { ...next[i], status: "error", error: msg, progress: undefined };
-          return next;
-        });
-        toast(`Failed: ${queue[i].file.name}`, "error");
-      }
+              return folder.id;
+            } catch (error) {
+              if (!(error instanceof ApiError) || error.status !== 409)
+                throw error;
+            }
+          }
+          throw new Error(`Could not create folder: ${name}`);
+        },
+      );
     }
-
-    setUploading(false);
-    if (successCount > 0) {
-      toast(`${successCount} file${successCount > 1 ? "s" : ""} uploaded`);
-      onClose();
+    try {
+      await runUploadQueue(
+        queue
+          .map((item, index) => ({ item, index }))
+          .filter(
+            ({ item }) =>
+              item.status !== "done" && item.file.size <= MAX_FILE_SIZE,
+          ),
+        async ({ item, index }) => {
+          update(index, { status: "uploading", progress: 0, error: undefined });
+          try {
+            const destination = await resolverRef.current!(item.path);
+            if (item.file.size > MULTIPART_THRESHOLD) {
+              await multipartUpload.mutateAsync({
+                parentId: destination,
+                file: item.file,
+                onProgress: (progress) => update(index, { progress }),
+              });
+            } else {
+              await upload.mutateAsync({
+                parentId: destination,
+                file: item.file,
+              });
+            }
+            successes++;
+            update(index, { status: "done", progress: 100 });
+          } catch (error) {
+            failures++;
+            update(index, {
+              status: "error",
+              progress: undefined,
+              error: error instanceof Error ? error.message : "Upload failed",
+            });
+          }
+        },
+      );
+    } finally {
+      busyRef.current = false;
+      setUploading(false);
+      void qc.invalidateQueries({ queryKey: keys.nodes });
+      void qc.invalidateQueries({ queryKey: keys.storageDashboard });
+      void qc.invalidateQueries({ queryKey: keys.userStorageQuota });
     }
+    toast(
+      `${successes} uploaded${failures ? `, ${failures} failed. Retry failed files below.` : ""}`,
+      failures ? "error" : undefined,
+    );
   }
 
-  const pending = queue.filter((q) => q.status === "pending").length;
-  const allDone = queue.length > 0 && queue.every((q) => q.status === "done");
+  const remaining = queue.filter(
+    (item) => item.status !== "done" && item.file.size <= MAX_FILE_SIZE,
+  ).length;
+  const completed = queue.filter((item) => item.status === "done").length;
+  const failed = queue.filter((item) => item.status === "error").length;
+  const currentPage = Math.min(
+    page,
+    Math.max(0, Math.ceil(queue.length / PAGE_SIZE) - 1),
+  );
+  const close = () => {
+    if (!busyRef.current) onClose();
+  };
 
   return (
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="action-modal max-w-[480px] p-6 rounded-3xl border border-slate-100 shadow-2xl">
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
+    >
+      <DialogContent
+        showCloseButton={!busy}
+        className="action-modal max-w-[560px] p-6 rounded-3xl border border-slate-100 shadow-2xl"
+      >
         <DialogHeader className="text-left shrink-0">
           <DialogTitle className="font-display text-lg font-semibold text-slate-900">
-            Upload files
+            Upload files or folders
           </DialogTitle>
         </DialogHeader>
-
         <div className="action-modal-body mt-2 pr-1">
-          {/* Drop zone */}
           <div
-            className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-colors ${
-              dragging
-                ? "border-neon-mint bg-neon-mint/10"
-                : "border-slate-200 hover:border-neon-violet hover:bg-slate-50"
-            }`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
+            className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center gap-3 ${dragging ? "border-neon-mint bg-neon-mint/10" : "border-slate-200"}`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!busy) setDragging(true);
             }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
-            onClick={() => inputRef.current?.click()}
           >
-            <div className="w-12 h-12 bg-neon-violet/10 rounded-xl flex items-center justify-center">
-              <Upload size={22} className="text-electric-indigo" />
+            <p className="text-sm text-slate-800">Drop files or folders here</p>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => inputRef.current?.click()}
+              >
+                Choose files
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => folderRef.current?.click()}
+              >
+                Choose folder
+              </Button>
             </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-slate-800">
-                Drop files here or{" "}
-                <span className="text-electric-indigo underline underline-offset-2">browse</span>
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5">Up to 3 GB per file</p>
-            </div>
+            <p className="text-xs text-slate-500">
+              Subfolders are preserved. Up to 3 GB per file.
+            </p>
             <input
               ref={inputRef}
               type="file"
@@ -147,63 +273,128 @@ export function UploadModal({ parentId, onClose }: Props) {
               className="hidden"
               onChange={onInputChange}
             />
+            <input
+              ref={folderRef}
+              type="file"
+              multiple
+              {...{ webkitdirectory: "" }}
+              className="hidden"
+              onChange={onInputChange}
+            />
           </div>
-
-          {/* Queue */}
+          {reading && (
+            <p role="status" className="text-sm mt-3">
+              Reading folder files…
+            </p>
+          )}
           {queue.length > 0 && (
-            <div className="space-y-2 mt-4">
-              {queue.map((item, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
-                  <File size={16} className="text-slate-400 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-800 truncate">{item.file.name}</p>
-                    <p className="text-xs text-slate-400">
-                      {formatSize(String(item.file.size))}
-                      {item.status === "uploading" && typeof item.progress === "number" ? ` • ${item.progress}%` : ""}
-                    </p>
-                  </div>
-                  {item.status === "uploading" && (
-                    <Loader2 size={16} className="animate-spin text-electric-indigo shrink-0" />
-                  )}
-                  {item.status === "done" && (
-                    <CheckCircle size={16} className="text-emerald-500 shrink-0" />
-                  )}
-                  {item.status === "error" && (
-                    <AlertCircle size={16} className="text-red-500 shrink-0" />
-                  )}
-                  {item.status === "pending" && (
-                    <button
-                      onClick={() => remove(i)}
-                      className="text-slate-400 hover:text-slate-600 shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
+            <>
+              <p role="status" className="text-sm text-slate-600 mt-4">
+                {completed} / {queue.length} uploaded ·{" "}
+                {formatSize(
+                  String(queue.reduce((sum, item) => sum + item.file.size, 0)),
+                )}
+                {failed > 0 ? ` · ${failed} failed` : ""}
+              </p>
+              {uploading && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Keep this tab open until uploads finish.
+                </p>
+              )}
+              <div className="space-y-2 mt-3">
+                {queue
+                  .slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
+                  .map((item, offset) => {
+                    const index = currentPage * PAGE_SIZE + offset;
+                    return (
+                      <div
+                        key={index}
+                        className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p
+                            title={item.path}
+                            className="text-sm text-slate-800 truncate"
+                          >
+                            {item.path}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {formatSize(String(item.file.size))} · {item.status}
+                            {item.status === "uploading"
+                              ? ` ${item.progress ?? 0}%`
+                              : ""}
+                          </p>
+                          {item.error && (
+                            <p className="text-xs text-red-600 break-words">
+                              {item.error}
+                            </p>
+                          )}
+                        </div>
+                        {item.status === "uploading" && (
+                          <Loader2
+                            size={16}
+                            aria-label="Uploading"
+                            className="animate-spin text-electric-indigo shrink-0"
+                          />
+                        )}
+                        {!busy && item.status !== "done" && (
+                          <button
+                            aria-label={`Remove ${item.path}`}
+                            onClick={() =>
+                              setQueue((prev) =>
+                                prev.filter((_, i) => i !== index),
+                              )
+                            }
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+              {queue.length > PAGE_SIZE && (
+                <div className="flex items-center justify-between mt-3 text-sm">
+                  <Button
+                    variant="outline"
+                    disabled={currentPage === 0}
+                    onClick={() => setPage(currentPage - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <span>
+                    {currentPage + 1} / {Math.ceil(queue.length / PAGE_SIZE)}
+                  </span>
+                  <Button
+                    variant="outline"
+                    disabled={(currentPage + 1) * PAGE_SIZE >= queue.length}
+                    onClick={() => setPage(currentPage + 1)}
+                  >
+                    Next
+                  </Button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
-
-        {/* Footer */}
         <div className="flex gap-3 pt-4 shrink-0">
           <Button
             variant="outline"
-            onClick={onClose}
-            className="flex-1 py-4.5 rounded-2xl"
+            onClick={close}
+            disabled={busy}
+            className="flex-1 rounded-2xl"
           >
-            {allDone ? "Close" : "Cancel"}
+            Close
           </Button>
-          {!allDone && (
-            <Button
-              onClick={startUpload}
-              disabled={pending === 0 || uploading}
-              className="flex-1 py-4.5 rounded-2xl bg-neon-violet hover:bg-[#8b5cf6] text-white font-semibold"
-            >
-              {uploading && <Loader2 size={14} className="animate-spin mr-2" />}
-              Upload {pending > 0 ? `${pending} file${pending > 1 ? "s" : ""}` : ""}
-            </Button>
-          )}
+          <Button
+            onClick={startUpload}
+            disabled={remaining === 0 || busy}
+            className="flex-1 rounded-2xl bg-neon-violet text-white"
+          >
+            {uploading && <Loader2 size={14} className="animate-spin mr-2" />}
+            {failed ? "Retry / upload" : "Upload"}{" "}
+            {remaining > 0 ? `${remaining} files` : ""}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

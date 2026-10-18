@@ -28,7 +28,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-6 right-6 z-50 flex w-[min(92vw,22rem)] flex-col gap-2.5 pointer-events-none">
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex w-[min(92vw,22rem)] flex-col gap-2.5 pointer-events-none">
         {toasts.map((t) => (
           <div
             key={t.id}
@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               {t.type === "error" ? <XCircle size={18} /> : <CheckCircle size={18} />}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-slate-800 leading-snug">{t.message}</p>
+              <p className="break-words text-sm font-semibold text-slate-800 leading-snug">{t.message}</p>
             </div>
             <button
               onClick={() => dismiss(t.id)}

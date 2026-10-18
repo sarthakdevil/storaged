@@ -10,6 +10,7 @@
     "preview:cloudflare": "turbo run preview:cloudflare",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
+    "test:uploads": "node --test scripts/test-folder-upload.cjs",
     "db:generate": "npm run db:generate --workspace=@repo/db",
     "db:migrate": "npm run db:migrate --workspace=@repo/db",
     "prisma:generate": "prisma generate",
