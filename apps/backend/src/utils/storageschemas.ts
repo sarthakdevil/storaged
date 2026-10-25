@@ -47,6 +47,7 @@ const commonConnectionSchema = z.object({
   forcePathStyle: z.boolean().optional(),
   isActive: z.boolean().optional(),
   quotaGb: z.number().positive("Quota must be a positive number.").optional(),
+  maxFileSizeMb: z.number().finite().positive("Maximum file size must be positive.").nullable().optional(),
 });
 
 const createSupabaseConnectionSchema = () =>

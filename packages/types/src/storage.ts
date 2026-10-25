@@ -18,6 +18,7 @@ export type StorageConnectionConfig = {
   accountId?: string;
   forcePathStyle?: boolean;
   quotaGb?: number;
+  maxFileSizeMb?: number | null;
 };
 
 export type StorageConnection = {
@@ -56,6 +57,7 @@ export type StorageConnectionInput = {
   forcePathStyle?: boolean;
   isActive?: boolean;
   quotaGb?: number;
+  maxFileSizeMb?: number | null;
 };
 
 export type StorageConnectionsPage = {

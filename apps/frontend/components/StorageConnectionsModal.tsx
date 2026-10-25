@@ -3,6 +3,7 @@
 import { FormEvent, UIEvent, useEffect, useMemo, useState } from "react";
 import { Database, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { StorageConnection, StorageConnectionInput, StorageProvider } from "../lib/api";
+import { defaultMaxFileSizeMb } from "@repo/types/storage-limits";
 import {
   useCreateStorageConnection,
   useDeleteStorageConnection,
@@ -331,6 +332,7 @@ export function StorageConnectionsModal({
       forcePathStyle: connection.config.forcePathStyle ?? connection.providerName !== "s3",
       isActive: connection.isActive,
       quotaGb: connection.config.quotaGb,
+      maxFileSizeMb: connection.config.maxFileSizeMb,
     });
   }
 
@@ -565,6 +567,22 @@ export function StorageConnectionsModal({
                   }
                 />
               </label>
+            <label>
+              <span>Maximum file size (MB, optional)</span>
+              <input
+                type="number"
+                min="0.001"
+                step="any"
+                value={form.maxFileSizeMb ?? ""}
+                onChange={(e) => update("maxFileSizeMb", e.target.value ? Number(e.target.value) : null)}
+                placeholder={`Default: ${defaultMaxFileSizeMb(form.provider)} MB`}
+              />
+              <small>
+                Leave blank to use {defaultMaxFileSizeMb(form.provider) === 3072 ? "3 GB" : `${defaultMaxFileSizeMb(form.provider)} MB`}
+                {form.provider === "supabase" ? " (Supabase Free). Set a higher limit for a paid plan, or a lower limit if your bucket requires it." : ". Set a lower limit if your bucket requires it."}
+                {" "}Larger files use another eligible bucket. 1 MB = 1,048,576 bytes.
+              </small>
+            </label>
             <label className="storage-checkbox">
               <input
                 type="checkbox"

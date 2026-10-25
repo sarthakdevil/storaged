@@ -9,6 +9,7 @@ import { Upload } from "@aws-sdk/lib-storage";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../utils/prisma";
 import { createS3Client } from "../utils/s3";
+import { reserveUpload, resolveQuotaGb } from "./bucketCapacity";
 import {
   formatStorageSchemaError,
   getStorageConnectionSchema,
@@ -33,6 +34,7 @@ type StorageConnectionConfig = {
   projectRef?: string;
   accountId?: string;
   quotaGb?: number;
+  maxFileSizeMb?: number;
 };
 
 type StorageHealthStatus = "connected" | "limited" | "error" | "inactive";
@@ -53,22 +55,6 @@ class StorageError extends Error {
 }
 
 const normalizeName = (value: string) => value.trim().toLowerCase() as StorageProvider;
-
-// Approximate free-tier storage caps (GB) used as the quota fallback when a
-// connection doesn't have a custom quota configured.
-const PROVIDER_FREE_TIER_GB: Record<StorageProvider, number> = {
-  s3: 5,
-  supabase: 1,
-  backblaze: 10,
-  storj: 25,
-  "cloudflare-r2": 10,
-  "idrive-e2": 10,
-  filebase: 5,
-  "oracle-oci": 20,
-};
-
-const resolveQuotaGb = (provider: StorageProvider, quotaGb: number | undefined) =>
-  quotaGb ?? PROVIDER_FREE_TIER_GB[provider] ?? undefined;
 
 const getProviderLabel = (provider: StorageProvider) => {
   switch (provider) {
@@ -231,6 +217,7 @@ const buildConnectionConfig = (
     projectRef: input.projectRef?.trim() || undefined,
     accountId: input.accountId?.trim() || undefined,
     quotaGb: input.quotaGb || undefined,
+    maxFileSizeMb: input.maxFileSizeMb ?? undefined,
   };
 };
 
@@ -458,6 +445,8 @@ export const updateStorageConnection = async ({ id, input: rawInput }: StorageCo
         ? existingConfig.forcePathStyle
         : undefined,
     isActive: existingConnection.isActive,
+    quotaGb: existingConfig.quotaGb,
+    maxFileSizeMb: existingConfig.maxFileSizeMb,
     ...incomingInput,
   };
 
@@ -604,32 +593,6 @@ const validateStoredBucketName = (providerName: string, bucketName: string) => {
   return null;
 };
 
-const selectLeastUsedBucket = async () => {
-  const buckets = await prisma.bucket.findMany({
-    where: { isActive: true },
-    include: {
-      fileObjects: {
-        include: { node: { select: { sizeBytes: true } } },
-      },
-    },
-  });
-
-  if (buckets.length === 0) {
-    throw new StorageError("No active storage buckets available.", 503);
-  }
-
-  return buckets
-    .map((bucket) => ({
-      bucket,
-      usedBytes: bucket.fileObjects.reduce(
-        (sum, fo) => sum + (fo.node?.sizeBytes ?? 0n),
-        0n,
-      ),
-    }))
-    .sort((a, b) => (a.usedBytes < b.usedBytes ? -1 : a.usedBytes > b.usedBytes ? 1 : 0))[0]
-    .bucket;
-};
-
 // Instead of rejecting an upload whose name collides with an existing file in
 // the same folder, find the next free "name (1).ext", "name (2).ext", ... —
 // matching the behavior users expect from Google Drive / Windows Explorer.
@@ -680,8 +643,6 @@ export const uploadFile = async ({
     throw new StorageError("Drive not found.", 404);
   }
 
-  const bucket = await selectLeastUsedBucket();
-
   const safeName = originalName.replace(/[^\w.\-]/g, "_");
 
   let parentPath = "";
@@ -703,24 +664,27 @@ export const uploadFile = async ({
   );
 
   const objectKey = `${userId}/${drive.id}/${crypto.randomUUID()}_${uniqueName}`;
+  // Use the actual buffer length, rather than trusting a supplied size.
+  sizeBytes = fileBuffer.byteLength;
+  const reservation = await reserveUpload({
+    userId, driveId: drive.id, parentId, fileName: uniqueName, mimeType,
+    sizeBytes, objectKey, partSizeBytes: 8 * 1024 ** 2,
+  }, (message, status) => new StorageError(message, status));
+  const bucket = reservation.bucket;
   const sizeBigInt = BigInt(sizeBytes);
-  const s3Client = createS3Client(getBucketConfig(bucket.config));
-
-  const upload = new Upload({
-    client: s3Client,
-    params: {
-      Bucket: bucket.bucketName,
-      Key: objectKey,
-      Body: fileBuffer,
-      ContentType: mimeType,
-      ContentLength: sizeBytes,
-    },
-  });
-
-  await upload.done();
-
+  let s3Client: ReturnType<typeof createS3Client> | undefined;
   try {
+    s3Client = createS3Client(getBucketConfig(bucket.config));
+    const upload = new Upload({
+      client: s3Client,
+      params: {
+        Bucket: bucket.bucketName, Key: objectKey, Body: fileBuffer,
+        ContentType: mimeType, ContentLength: sizeBytes,
+      },
+    });
+    await upload.done();
     const result = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Bucket" WHERE id = ${bucket.id} FOR UPDATE`;
       const node = await tx.node.create({
         data: {
           driveId: drive.id,
@@ -743,6 +707,10 @@ export const uploadFile = async ({
         data: { usedBytes: { increment: sizeBigInt } },
       });
 
+      await tx.uploadSession.update({
+        where: { id: reservation.id },
+        data: { status: "COMPLETED", completedAt: new Date(), nodeId: node.id },
+      });
       return { node, fileObject };
     });
 
@@ -765,9 +733,12 @@ export const uploadFile = async ({
     };
   } catch (err) {
     // Best-effort S3 cleanup if DB transaction fails
-    await s3Client
-      .send(new DeleteObjectCommand({ Bucket: bucket.bucketName, Key: objectKey }))
+    await s3Client?.send(new DeleteObjectCommand({ Bucket: bucket.bucketName, Key: objectKey }))
       .catch(() => undefined);
+    await prisma.uploadSession.update({
+      where: { id: reservation.id },
+      data: { status: "FAILED", errorMessage: err instanceof Error ? err.message : "Upload failed." },
+    });
     throw err;
   }
 };

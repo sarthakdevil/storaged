@@ -10,6 +10,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../utils/prisma";
 import { createS3Client } from "../utils/s3";
+import { reserveUpload } from "./bucketCapacity";
 
 class UploadError extends Error {
   statusCode: number;
@@ -40,32 +41,6 @@ const getBucketConfig = (config: Prisma.JsonValue): BucketConfig => {
     secretAccessKey: c.secretAccessKey as string,
     forcePathStyle: c.forcePathStyle as boolean,
   };
-};
-
-const selectLeastUsedBucket = async () => {
-  const buckets = await prisma.bucket.findMany({
-    where: { isActive: true },
-    include: {
-      fileObjects: {
-        include: { node: { select: { sizeBytes: true } } },
-      },
-    },
-  });
-
-  if (buckets.length === 0) {
-    throw new UploadError("No active storage buckets available.", 503);
-  }
-
-  return buckets
-    .map((bucket) => ({
-      bucket,
-      usedBytes: bucket.fileObjects.reduce(
-        (sum, fo) => sum + (fo.node?.sizeBytes ?? 0n),
-        0n,
-      ),
-    }))
-    .sort((a, b) => (a.usedBytes < b.usedBytes ? -1 : a.usedBytes > b.usedBytes ? 1 : 0))[0]
-    .bucket;
 };
 
 const sanitizeFileName = (originalName: string) => {
@@ -190,14 +165,18 @@ export const initiateMultipartUpload = async ({
   // right before the Node is actually created.
   const { name: uniqueName } = await resolveUniqueFilePath(drive.id, parentPath, safeName);
 
-  const bucket = await selectLeastUsedBucket();
   const objectKey = `${userId}/${drive.id}/${crypto.randomUUID()}_${uniqueName}`;
   const partSizeBytes = choosePartSizeBytes(sizeBytes);
+  const reservation = await reserveUpload({
+    userId, driveId: drive.id, parentId, fileName: uniqueName, mimeType,
+    sizeBytes, partSizeBytes, objectKey,
+  }, (message, status) => new UploadError(message, status));
+  const bucket = reservation.bucket;
 
-  const s3Client = createS3Client(getBucketConfig(bucket.config));
-
-  let uploadId: string;
+  let s3Client: ReturnType<typeof createS3Client> | undefined;
+  let uploadId: string | undefined;
   try {
+    s3Client = createS3Client(getBucketConfig(bucket.config));
     const result = await s3Client.send(
       new CreateMultipartUploadCommand({
         Bucket: bucket.bucketName,
@@ -211,40 +190,37 @@ export const initiateMultipartUpload = async ({
     }
 
     uploadId = result.UploadId;
+    const session = await prisma.uploadSession.update({
+      where: { id: reservation.id },
+      data: { uploadId },
+      select: {
+        id: true,
+        uploadId: true,
+        objectKey: true,
+        partSizeBytes: true,
+        bucket: { select: { bucketName: true } },
+      },
+    });
+
+    return {
+      uploadSessionId: session.id,
+      uploadId: session.uploadId,
+      objectKey: session.objectKey,
+      bucketName: session.bucket.bucketName,
+      partSizeBytes: session.partSizeBytes,
+    };
   } catch (error) {
+    if (uploadId) {
+      await s3Client?.send(new AbortMultipartUploadCommand({
+        Bucket: bucket.bucketName, Key: objectKey, UploadId: uploadId,
+      })).catch(() => undefined);
+    }
+    await prisma.uploadSession.update({
+      where: { id: reservation.id },
+      data: { status: "FAILED", errorMessage: describeS3Failure(error) },
+    });
     throw new UploadError(describeS3Failure(error), 502);
   }
-
-  const session = await prisma.uploadSession.create({
-    data: {
-      userId,
-      driveId: drive.id,
-      parentId: parentId ?? null,
-      fileName: uniqueName,
-      mimeType: mimeType ?? null,
-      sizeBytes: BigInt(sizeBytes),
-      partSizeBytes,
-      bucketId: bucket.id,
-      objectKey,
-      uploadId,
-      status: "INITIATED",
-    },
-    select: {
-      id: true,
-      uploadId: true,
-      objectKey: true,
-      partSizeBytes: true,
-      bucket: { select: { bucketName: true } },
-    },
-  });
-
-  return {
-    uploadSessionId: session.id,
-    uploadId: session.uploadId,
-    objectKey: session.objectKey,
-    bucketName: session.bucket.bucketName,
-    partSizeBytes: session.partSizeBytes,
-  };
 };
 
 export const getUploadSessionStatus = async ({
@@ -311,6 +287,9 @@ export const getUploadPartUrl = async ({
   if (session.status === "ABORTED" || session.status === "FAILED" || session.status === "COMPLETED") {
     throw new UploadError(`Cannot upload parts in status ${session.status}.`, 409);
   }
+  if (!session.uploadId) throw new UploadError("Multipart upload is not ready.", 409);
+  const remainingBytes = Number(session.sizeBytes) - (partNumber - 1) * session.partSizeBytes;
+  if (remainingBytes <= 0) throw new UploadError("Part exceeds the declared file size.", 400);
 
   const s3Client = createS3Client(getBucketConfig(session.bucket.config));
 
@@ -319,6 +298,7 @@ export const getUploadPartUrl = async ({
     Key: session.objectKey,
     UploadId: session.uploadId,
     PartNumber: partNumber,
+    ContentLength: Math.min(remainingBytes, session.partSizeBytes),
   });
 
   const url = await getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
@@ -544,6 +524,7 @@ export const finalizeUploadNow = async ({
 
     try {
       result = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Bucket" WHERE id = ${session.bucketId} FOR UPDATE`;
         const node = await tx.node.create({
           data: {
             driveId: session.driveId,

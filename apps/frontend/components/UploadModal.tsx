@@ -264,7 +264,7 @@ export function UploadModal({
               </Button>
             </div>
             <p className="text-xs text-slate-500">
-              Subfolders are preserved. Up to 3 GB per file.
+              Folder structure is preserved across storage buckets. Up to 3 GB per file, subject to bucket limits.
             </p>
             <input
               ref={inputRef}
