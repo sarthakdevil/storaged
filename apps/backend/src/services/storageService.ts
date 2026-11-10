@@ -1,8 +1,10 @@
+import { chunkDownloadUrl } from "./chunkDownload";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   S3ServiceException,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Upload } from "@aws-sdk/lib-storage";
@@ -86,7 +88,11 @@ const validateEndpointUrl = (endpointUrl: string) => {
     // preserving any meaningful path, query, or hash. This avoids
     // environments where `URL.toString()` may add an unwanted trailing slash.
     const pathname = u.pathname.replace(/\/$/, "");
-    const normalized = u.origin + (pathname === "" ? "" : pathname) + (u.search || "") + (u.hash || "");
+    const normalized =
+      u.origin +
+      (pathname === "" ? "" : pathname) +
+      (u.search || "") +
+      (u.hash || "");
     return normalized;
   } catch {
     throw new StorageError("Provide a valid endpoint URL.", 400);
@@ -101,7 +107,8 @@ const getProviderDefaults = (
     case "s3": {
       return {
         endpointUrl:
-          input.endpointUrl?.trim() ?? `https://s3.${input.region}.amazonaws.com`,
+          input.endpointUrl?.trim() ??
+          `https://s3.${input.region}.amazonaws.com`,
         region: input.region!,
         forcePathStyle: input.forcePathStyle ?? false,
       };
@@ -118,14 +125,16 @@ const getProviderDefaults = (
     case "backblaze": {
       return {
         endpointUrl:
-          input.endpointUrl?.trim() ?? `https://s3.${input.region}.backblazeb2.com`,
+          input.endpointUrl?.trim() ??
+          `https://s3.${input.region}.backblazeb2.com`,
         region: input.region!,
         forcePathStyle: true,
       };
     }
     case "storj": {
       return {
-        endpointUrl: input.endpointUrl?.trim() ?? "https://gateway.storjshare.io",
+        endpointUrl:
+          input.endpointUrl?.trim() ?? "https://gateway.storjshare.io",
         region: input.region?.trim() ?? "us1",
         forcePathStyle: true,
       };
@@ -176,7 +185,9 @@ const parseStorageConnectionInput = (
   const input = rawInput as Record<string, unknown>;
   const providerValue = input.provider;
   const provider =
-    typeof providerValue === "string" ? normalizeName(providerValue) : fallbackProvider;
+    typeof providerValue === "string"
+      ? normalizeName(providerValue)
+      : fallbackProvider;
 
   if (!provider) {
     throw new StorageError("Storage provider is required.", 400);
@@ -205,7 +216,9 @@ const buildConnectionConfig = (
 ): StorageConnectionConfig => {
   const defaults = getProviderDefaults(input.provider, input);
   const forcePathStyle =
-    input.provider === "s3" ? input.forcePathStyle ?? defaults.forcePathStyle : defaults.forcePathStyle;
+    input.provider === "s3"
+      ? (input.forcePathStyle ?? defaults.forcePathStyle)
+      : defaults.forcePathStyle;
 
   return {
     provider: input.provider,
@@ -246,7 +259,10 @@ const sanitizeBucketConnection = (bucket: {
   };
 };
 
-const normalizeStorageListOptions = ({ limit, cursor }: StorageListOptions = {}) => ({
+const normalizeStorageListOptions = ({
+  limit,
+  cursor,
+}: StorageListOptions = {}) => ({
   limit: Math.min(Math.max(limit ?? 10, 1), 50),
   cursor: cursor?.trim() || undefined,
 });
@@ -258,13 +274,18 @@ const getBucketHealth = async (bucket: {
   isActive: boolean;
 }) => {
   let status: StorageHealthStatus = bucket.isActive ? "connected" : "inactive";
-  let statusMessage = bucket.isActive ? "Bucket is reachable." : "Bucket is inactive.";
+  let statusMessage = bucket.isActive
+    ? "Bucket is reachable."
+    : "Bucket is inactive.";
 
   if (!bucket.isActive) {
     return { status, statusMessage };
   }
 
-  const bucketNameError = validateStoredBucketName(bucket.providerName, bucket.bucketName);
+  const bucketNameError = validateStoredBucketName(
+    bucket.providerName,
+    bucket.bucketName,
+  );
 
   if (bucketNameError) {
     return {
@@ -295,28 +316,44 @@ const buildStorageConnectionView = async (bucket: {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
-  fileObjects?: { node?: { sizeBytes: bigint; isDeleted: boolean } | null }[];
+  fileObjects?: {
+    sizeBytes?: bigint | null;
+    node?: { sizeBytes: bigint; isDeleted: boolean } | null;
+  }[];
 }) => {
   const health = await getBucketHealth(bucket);
 
   const fileObjects = bucket.fileObjects ?? [];
   const usedBytes = fileObjects.reduce(
     (sum, fileObject) =>
-      fileObject.node && !fileObject.node.isDeleted ? sum + fileObject.node.sizeBytes : sum,
+      fileObject.node
+        ? sum + (fileObject.sizeBytes ?? fileObject.node.sizeBytes)
+        : sum,
     0n,
   );
   const totalObjects = fileObjects.length;
-  const activeObjects = fileObjects.filter((fileObject) => !fileObject.node?.isDeleted).length;
+  const activeObjects = fileObjects.filter(
+    (fileObject) => !fileObject.node?.isDeleted,
+  ).length;
 
   const bucketConfig = getBucketConfig(bucket.config);
-  const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, bucketConfig.quotaGb);
+  const resolvedQuotaGb = resolveQuotaGb(
+    bucket.providerName as StorageProvider,
+    bucketConfig.quotaGb,
+  );
   const quotaBigInt = resolvedQuotaGb
     ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024))
     : null;
   const availableBigInt =
-    quotaBigInt !== null ? (quotaBigInt > usedBytes ? quotaBigInt - usedBytes : 0n) : null;
+    quotaBigInt !== null
+      ? quotaBigInt > usedBytes
+        ? quotaBigInt - usedBytes
+        : 0n
+      : null;
 
-  const providerLabel = bucket.displayName?.trim() || getProviderLabel(bucket.providerName as StorageProvider);
+  const providerLabel =
+    bucket.displayName?.trim() ||
+    getProviderLabel(bucket.providerName as StorageProvider);
 
   return {
     ...sanitizeBucketConnection(bucket),
@@ -408,7 +445,10 @@ export const getStorageConnection = async (id: string) => {
   return await buildStorageConnectionView(connection as any);
 };
 
-export const updateStorageConnection = async ({ id, input: rawInput }: StorageConnectionUpdateInput) => {
+export const updateStorageConnection = async ({
+  id,
+  input: rawInput,
+}: StorageConnectionUpdateInput) => {
   const existingConnection = await prisma.bucket.findUnique({
     where: { id },
   });
@@ -417,7 +457,8 @@ export const updateStorageConnection = async ({ id, input: rawInput }: StorageCo
     throw new StorageError("Storage connection not found.", 404);
   }
 
-  const existingConfig = (existingConnection.config as Record<string, unknown>) ?? {};
+  const existingConfig =
+    (existingConnection.config as Record<string, unknown>) ?? {};
   const incomingInput =
     rawInput && typeof rawInput === "object" && !Array.isArray(rawInput)
       ? (rawInput as Record<string, unknown>)
@@ -428,18 +469,29 @@ export const updateStorageConnection = async ({ id, input: rawInput }: StorageCo
     bucketName: existingConnection.bucketName,
     displayName: existingConnection.displayName ?? undefined,
     accessKeyId:
-      typeof existingConfig.accessKeyId === "string" ? existingConfig.accessKeyId : "",
+      typeof existingConfig.accessKeyId === "string"
+        ? existingConfig.accessKeyId
+        : "",
     secretAccessKey:
       typeof existingConfig.secretAccessKey === "string"
         ? existingConfig.secretAccessKey
         : "",
     endpointUrl:
-      typeof existingConfig.endpointUrl === "string" ? existingConfig.endpointUrl : undefined,
-    region: typeof existingConfig.region === "string" ? existingConfig.region : undefined,
+      typeof existingConfig.endpointUrl === "string"
+        ? existingConfig.endpointUrl
+        : undefined,
+    region:
+      typeof existingConfig.region === "string"
+        ? existingConfig.region
+        : undefined,
     projectRef:
-      typeof existingConfig.projectRef === "string" ? existingConfig.projectRef : undefined,
+      typeof existingConfig.projectRef === "string"
+        ? existingConfig.projectRef
+        : undefined,
     accountId:
-      typeof existingConfig.accountId === "string" ? existingConfig.accountId : undefined,
+      typeof existingConfig.accountId === "string"
+        ? existingConfig.accountId
+        : undefined,
     forcePathStyle:
       typeof existingConfig.forcePathStyle === "boolean"
         ? existingConfig.forcePathStyle
@@ -471,19 +523,24 @@ export const updateStorageConnection = async ({ id, input: rawInput }: StorageCo
 };
 
 export const deleteStorageConnection = async (id: string) => {
-  const connection = await prisma.bucket.findUnique({
-    where: { id },
-    select: {
-      id: true,
-    },
-  });
-
-  if (!connection) {
-    throw new StorageError("Storage connection not found.", 404);
-  }
-
-  await prisma.bucket.delete({
-    where: { id },
+  await prisma.$transaction(async (tx) => {
+    // Use the same lock order as upload admission, including an inactive target.
+    await tx.$queryRaw`SELECT id FROM "Bucket" WHERE "isActive" = true OR id = ${id} ORDER BY id FOR UPDATE`;
+    const connection = await tx.bucket.findUnique({ where: { id }, select: { id: true } });
+    if (!connection) throw new StorageError("Storage connection not found.", 404);
+    const fileCount = await tx.fileObject.count({ where: { bucketId: id } });
+    const pendingCount = await tx.uploadSession.count({ where: {
+      bucketId: id, status: { in: ["INITIATED", "UPLOADING", "COMPLETING", "ABORTING"] },
+    } });
+    const chunkCount = await tx.uploadChunk.count({ where: {
+      bucketId: id, session: { status: { in: ["INITIATED", "UPLOADING", "COMPLETING", "ABORTING", "FAILED"] } },
+    } });
+    if (fileCount || pendingCount || chunkCount) {
+      throw new StorageError("This storage still contains files or pending uploads. Disable it to stop new uploads, or remove its files and abort pending uploads before disconnecting.", 409);
+    }
+    // Terminal session records can outlive files; their manifests no longer hold data.
+    await tx.uploadChunk.deleteMany({ where: { bucketId: id } });
+    await tx.bucket.delete({ where: { id } });
   });
 
   return {
@@ -531,20 +588,27 @@ const getS3ErrorCode = (error: unknown) => {
 
 const describeBucketHealthFailure = (error: unknown) => {
   const code = getS3ErrorCode(error);
-  const message = error instanceof Error ? error.message : "Could not reach this bucket.";
+  const message =
+    error instanceof Error ? error.message : "Could not reach this bucket.";
   const metadata =
     error instanceof S3ServiceException
       ? [
-          error.$metadata.httpStatusCode && `HTTP ${error.$metadata.httpStatusCode}`,
+          error.$metadata.httpStatusCode &&
+            `HTTP ${error.$metadata.httpStatusCode}`,
           error.$metadata.requestId && `request ${error.$metadata.requestId}`,
-          error.$metadata.extendedRequestId && `extended ${error.$metadata.extendedRequestId}`,
+          error.$metadata.extendedRequestId &&
+            `extended ${error.$metadata.extendedRequestId}`,
         ]
           .filter(Boolean)
           .join(", ")
       : "";
   const fullMessage = [code, message, metadata].filter(Boolean).join(": ");
 
-  if (code === "AccessDenied" || code === "Forbidden" || code === "NotAuthorized") {
+  if (
+    code === "AccessDenied" ||
+    code === "Forbidden" ||
+    code === "NotAuthorized"
+  ) {
     return {
       status: "limited" as const,
       statusMessage:
@@ -562,14 +626,16 @@ const describeBucketHealthFailure = (error: unknown) => {
   if (code === "PermanentRedirect" || code === "AuthorizationHeaderMalformed") {
     return {
       status: "error" as const,
-      statusMessage: "Bucket exists in a different region or endpoint. Check region and endpoint URL.",
+      statusMessage:
+        "Bucket exists in a different region or endpoint. Check region and endpoint URL.",
     };
   }
 
   if (code === "InvalidAccessKeyId" || code === "SignatureDoesNotMatch") {
     return {
       status: "error" as const,
-      statusMessage: "Storage credentials were rejected. Check access key and secret key.",
+      statusMessage:
+        "Storage credentials were rejected. Check access key and secret key.",
     };
   }
 
@@ -648,7 +714,12 @@ export const uploadFile = async ({
   let parentPath = "";
   if (parentId) {
     const parentNode = await prisma.node.findFirst({
-      where: { id: parentId, driveId: drive.id, type: "FOLDER", isDeleted: false },
+      where: {
+        id: parentId,
+        driveId: drive.id,
+        type: "FOLDER",
+        isDeleted: false,
+      },
       select: { path: true },
     });
     if (!parentNode) {
@@ -666,25 +737,56 @@ export const uploadFile = async ({
   const objectKey = `${userId}/${drive.id}/${crypto.randomUUID()}_${uniqueName}`;
   // Use the actual buffer length, rather than trusting a supplied size.
   sizeBytes = fileBuffer.byteLength;
-  const reservation = await reserveUpload({
-    userId, driveId: drive.id, parentId, fileName: uniqueName, mimeType,
-    sizeBytes, objectKey, partSizeBytes: 8 * 1024 ** 2,
-  }, (message, status) => new StorageError(message, status));
+  const reservation = await reserveUpload(
+    {
+      userId,
+      driveId: drive.id,
+      parentId,
+      fileName: uniqueName,
+      mimeType,
+      sizeBytes,
+      objectKey,
+      partSizeBytes: 8 * 1024 ** 2,
+      distributed: sizeBytes > 0,
+    },
+    (message, status) => new StorageError(message, status),
+  );
   const bucket = reservation.bucket;
   const sizeBigInt = BigInt(sizeBytes);
+  const attemptedChunks: typeof reservation.chunks = [];
   let s3Client: ReturnType<typeof createS3Client> | undefined;
   try {
     s3Client = createS3Client(getBucketConfig(bucket.config));
-    const upload = new Upload({
-      client: s3Client,
-      params: {
-        Bucket: bucket.bucketName, Key: objectKey, Body: fileBuffer,
-        ContentType: mimeType, ContentLength: sizeBytes,
-      },
-    });
-    await upload.done();
+    if (reservation.chunks?.length) {
+      let offset = 0;
+      for (const chunk of reservation.chunks) {
+        const end = offset + Number(chunk.sizeBytes);
+        attemptedChunks.push(chunk);
+        await createS3Client(getBucketConfig(chunk.bucket.config)).send(
+          new PutObjectCommand({
+            Bucket: chunk.bucket.bucketName,
+            Key: chunk.objectKey,
+            Body: fileBuffer.subarray(offset, end),
+            ContentLength: Number(chunk.sizeBytes),
+          }),
+        );
+        offset = end;
+      }
+    } else {
+      const upload = new Upload({
+        client: s3Client,
+        params: {
+          Bucket: bucket.bucketName,
+          Key: objectKey,
+          Body: fileBuffer,
+          ContentType: mimeType,
+          ContentLength: sizeBytes,
+        },
+      });
+      await upload.done();
+    }
     const result = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "Bucket" WHERE id = ${bucket.id} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM "Bucket" WHERE "isActive" = true ORDER BY id FOR UPDATE`;
       const node = await tx.node.create({
         data: {
           driveId: drive.id,
@@ -698,9 +800,22 @@ export const uploadFile = async ({
         },
       });
 
-      const fileObject = await tx.fileObject.create({
-        data: { nodeId: node.id, bucketId: bucket.id, objectKey },
-      });
+      if (reservation.chunks?.length) {
+        await tx.fileObject.createMany({
+          data: reservation.chunks.map((c) => ({
+            nodeId: node.id,
+            bucketId: c.bucketId,
+            objectKey: c.objectKey,
+            sizeBytes: c.sizeBytes,
+            chunkIndex: c.partNumber,
+          })),
+        });
+      } else {
+        await tx.fileObject.create({
+          data: { nodeId: node.id, bucketId: bucket.id, objectKey },
+        });
+      }
+      const fileObject = { objectKey };
 
       await tx.drive.update({
         where: { id: drive.id },
@@ -732,12 +847,39 @@ export const uploadFile = async ({
       updatedAt: result.node.updatedAt,
     };
   } catch (err) {
+    let cleanupFailed = false;
+    if (attemptedChunks.length) {
+      for (const chunk of attemptedChunks) {
+        await Promise.resolve()
+          .then(() =>
+            createS3Client(getBucketConfig(chunk.bucket.config)).send(
+              new DeleteObjectCommand({
+                Bucket: chunk.bucket.bucketName,
+                Key: chunk.objectKey,
+              }),
+            ),
+          )
+          .catch(() => {
+            cleanupFailed = true;
+          });
+      }
+    }
     // Best-effort S3 cleanup if DB transaction fails
-    await s3Client?.send(new DeleteObjectCommand({ Bucket: bucket.bucketName, Key: objectKey }))
+    await s3Client
+      ?.send(
+        new DeleteObjectCommand({ Bucket: bucket.bucketName, Key: objectKey }),
+      )
       .catch(() => undefined);
     await prisma.uploadSession.update({
       where: { id: reservation.id },
-      data: { status: "FAILED", errorMessage: err instanceof Error ? err.message : "Upload failed." },
+      data: {
+        status: cleanupFailed
+          ? "ABORTING"
+          : reservation.chunks?.length
+            ? "ABORTED"
+            : "FAILED",
+        errorMessage: err instanceof Error ? err.message : "Upload failed.",
+      },
     });
     throw err;
   }
@@ -777,7 +919,12 @@ export const createFolder = async ({
   let parentPath = "";
   if (parentId) {
     const parentNode = await prisma.node.findFirst({
-      where: { id: parentId, driveId: drive.id, type: "FOLDER", isDeleted: false },
+      where: {
+        id: parentId,
+        driveId: drive.id,
+        type: "FOLDER",
+        isDeleted: false,
+      },
       select: { path: true },
     });
     if (!parentNode) {
@@ -838,7 +985,11 @@ const resolveConflictName = (name: string, basePath: string): { name: string; pa
 // Returns all non-deleted descendant nodes of a folder (identified by its current path).
 const getDescendants = (driveId: string, folderPath: string) =>
   prisma.node.findMany({
-    where: { driveId, path: { startsWith: `${folderPath}/` }, isDeleted: false },
+    where: {
+      driveId,
+      path: { startsWith: `${folderPath}/` },
+      isDeleted: false,
+    },
   });
 
 // ─── List ──────────────────────────────────────────────────────────────────────
@@ -869,7 +1020,9 @@ export const listFiles = async ({
       isFavorite: true,
       createdAt: true,
       updatedAt: true,
-      tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+      tags: {
+        select: { tag: { select: { id: true, name: true, color: true } } },
+      },
     },
   });
 
@@ -1006,7 +1159,10 @@ export const restoreNode = async ({
   let restoredName = targetName;
 
   if (conflict && !conflict.isDeleted) {
-    ({ name: restoredName, path: restoredPath } = resolveConflictName(targetName, targetPath));
+    ({ name: restoredName, path: restoredPath } = resolveConflictName(
+      targetName,
+      targetPath,
+    ));
   }
 
   if (node.type === "FILE") {
@@ -1026,7 +1182,11 @@ export const restoreNode = async ({
     // Folder: restore all descendants under the trash root back to their original paths.
     const trashRoot = `/__trash__/${nodeId}`;
     const descendants = await prisma.node.findMany({
-      where: { driveId: node.driveId, path: { startsWith: `${trashRoot}/` }, isDeleted: true },
+      where: {
+        driveId: node.driveId,
+        path: { startsWith: `${trashRoot}/` },
+        isDeleted: true,
+      },
     });
 
     await prisma.$transaction([
@@ -1043,7 +1203,8 @@ export const restoreNode = async ({
         },
       }),
       ...descendants.map((d) => {
-        const dOriginalPath = d.originalPath ?? d.path.replace(trashRoot, restoredPath);
+        const dOriginalPath =
+          d.originalPath ?? d.path.replace(trashRoot, restoredPath);
         const dOriginalName = d.originalName ?? d.name;
         return prisma.node.update({
           where: { id: d.id },
@@ -1101,7 +1262,10 @@ export const deleteNode = async ({
   await Promise.allSettled(
     allFileObjects.map((fo) =>
       createS3Client(getBucketConfig(fo.bucket.config)).send(
-        new DeleteObjectCommand({ Bucket: fo.bucket.bucketName, Key: fo.objectKey }),
+        new DeleteObjectCommand({
+          Bucket: fo.bucket.bucketName,
+          Key: fo.objectKey,
+        }),
       ),
     ),
   );
@@ -1212,8 +1376,13 @@ export const getUserStorageQuota = async ({
 
   const bucketSummaries = buckets.map((bucket) => {
     const bConfig = getBucketConfig(bucket.config);
-    const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, bConfig.quotaGb);
-    return resolvedQuotaGb ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024)) : null;
+    const resolvedQuotaGb = resolveQuotaGb(
+      bucket.providerName as StorageProvider,
+      bConfig.quotaGb,
+    );
+    return resolvedQuotaGb
+      ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024))
+      : null;
   });
 
   const hasBucketQuotas = bucketSummaries.some((q) => q !== null);
@@ -1228,9 +1397,13 @@ export const getUserStorageQuota = async ({
   const usedBytes = driveUsedBytes;
   const availableBytes = totalBytes > usedBytes ? totalBytes - usedBytes : 0n;
 
-  const percentageUsed = totalBytes > 0n
-    ? Math.min(100, Math.round((Number(usedBytes) / Number(totalBytes)) * 10000) / 100)
-    : 0;
+  const percentageUsed =
+    totalBytes > 0n
+      ? Math.min(
+          100,
+          Math.round((Number(usedBytes) / Number(totalBytes)) * 10000) / 100,
+        )
+      : 0;
 
   return {
     usedBytes: usedBytes.toString(),
@@ -1255,12 +1428,26 @@ export const downloadFile = async ({
   expiresIn?: number;
 }) => {
   const node = await prisma.node.findFirst({
-    where: { id: nodeId, type: "FILE", isDeleted: false, drive: { ownerId: userId } },
+    where: {
+      id: nodeId,
+      type: "FILE",
+      isDeleted: false,
+      drive: { ownerId: userId },
+    },
     include: { fileObjects: { include: { bucket: true } } },
   });
 
   if (!node) throw new StorageError("File not found.", 404);
 
+  if (node.fileObjects.some((fo) => fo.chunkIndex !== null)) {
+    return {
+      url: await chunkDownloadUrl(node.id, false, expiresIn),
+      expiresIn,
+      name: node.name,
+      mimeType: node.mimeType,
+      sizeBytes: node.sizeBytes.toString(),
+    };
+  }
   const fo = node.fileObjects[0];
   if (!fo) throw new StorageError("File data not found.", 404);
 
@@ -1274,7 +1461,13 @@ export const downloadFile = async ({
 
   const url = await getSignedUrl(s3Client, command, { expiresIn });
 
-  return { url, expiresIn, name: node.name, mimeType: node.mimeType, sizeBytes: node.sizeBytes.toString() };
+  return {
+    url,
+    expiresIn,
+    name: node.name,
+    mimeType: node.mimeType,
+    sizeBytes: node.sizeBytes.toString(),
+  };
 };
 
 // ─── Preview (presigned URL, inline) ────────────────────────────────────────
@@ -1289,12 +1482,26 @@ export const previewFile = async ({
   expiresIn?: number;
 }) => {
   const node = await prisma.node.findFirst({
-    where: { id: nodeId, type: "FILE", isDeleted: false, drive: { ownerId: userId } },
+    where: {
+      id: nodeId,
+      type: "FILE",
+      isDeleted: false,
+      drive: { ownerId: userId },
+    },
     include: { fileObjects: { include: { bucket: true } } },
   });
 
   if (!node) throw new StorageError("File not found.", 404);
 
+  if (node.fileObjects.some((fo) => fo.chunkIndex !== null)) {
+    return {
+      url: await chunkDownloadUrl(node.id, true, expiresIn),
+      expiresIn,
+      name: node.name,
+      mimeType: node.mimeType,
+      sizeBytes: node.sizeBytes.toString(),
+    };
+  }
   const fo = node.fileObjects[0];
   if (!fo) throw new StorageError("File data not found.", 404);
 
@@ -1308,7 +1515,13 @@ export const previewFile = async ({
 
   const url = await getSignedUrl(s3Client, command, { expiresIn });
 
-  return { url, expiresIn, name: node.name, mimeType: node.mimeType, sizeBytes: node.sizeBytes.toString() };
+  return {
+    url,
+    expiresIn,
+    name: node.name,
+    mimeType: node.mimeType,
+    sizeBytes: node.sizeBytes.toString(),
+  };
 };
 
 // ─── Update node details ──────────────────────────────────────────────────────
@@ -1441,31 +1654,42 @@ export const getStorageDashboard = async (options?: StorageListOptions) => {
     ? buckets.slice(buckets.findIndex((bucket) => bucket.id === cursor) + 1)
     : buckets;
   const page = pagedBuckets.slice(0, limit);
-  const nextCursor = pagedBuckets.length > limit ? pagedBuckets[limit].id : null;
+  const nextCursor =
+    pagedBuckets.length > limit ? pagedBuckets[limit].id : null;
 
   const storages = await Promise.all(
     page.map(async (bucket) => {
       const usedBytes = bucket.fileObjects.reduce(
         (sum, fileObject) =>
-          fileObject.node && !fileObject.node.isDeleted
-            ? sum + fileObject.node.sizeBytes
+          fileObject.node
+            ? sum + (fileObject.sizeBytes ?? fileObject.node.sizeBytes)
             : sum,
         0n,
       );
       const totalObjects = bucket.fileObjects.length;
-      const activeObjects = bucket.fileObjects.filter((fileObject) => !fileObject.node?.isDeleted)
-        .length;
+      const activeObjects = bucket.fileObjects.filter(
+        (fileObject) => !fileObject.node?.isDeleted,
+      ).length;
 
       const health = await getBucketHealth(bucket);
       const bConfig = getBucketConfig(bucket.config);
-      const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, bConfig.quotaGb);
+      const resolvedQuotaGb = resolveQuotaGb(
+        bucket.providerName as StorageProvider,
+        bConfig.quotaGb,
+      );
       const quotaBigInt = resolvedQuotaGb
         ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024))
         : null;
       const availableBigInt =
-        quotaBigInt !== null ? (quotaBigInt > usedBytes ? quotaBigInt - usedBytes : 0n) : null;
+        quotaBigInt !== null
+          ? quotaBigInt > usedBytes
+            ? quotaBigInt - usedBytes
+            : 0n
+          : null;
 
-      const providerLabel = bucket.displayName?.trim() || getProviderLabel(bucket.providerName as StorageProvider);
+      const providerLabel =
+        bucket.displayName?.trim() ||
+        getProviderLabel(bucket.providerName as StorageProvider);
 
       return {
         id: bucket.id,
@@ -1494,13 +1718,16 @@ export const getStorageDashboard = async (options?: StorageListOptions) => {
   const allSummaries = buckets.map((bucket) => {
     const usedBytes = bucket.fileObjects.reduce(
       (sum, fileObject) =>
-        fileObject.node && !fileObject.node.isDeleted
-          ? sum + fileObject.node.sizeBytes
+        fileObject.node
+          ? sum + (fileObject.sizeBytes ?? fileObject.node.sizeBytes)
           : sum,
       0n,
     );
     const sConfig = getBucketConfig(bucket.config);
-    const resolvedQuotaGb = resolveQuotaGb(bucket.providerName as StorageProvider, sConfig.quotaGb);
+    const resolvedQuotaGb = resolveQuotaGb(
+      bucket.providerName as StorageProvider,
+      sConfig.quotaGb,
+    );
     const quotaBigInt = resolvedQuotaGb
       ? BigInt(Math.round(resolvedQuotaGb * 1024 * 1024 * 1024))
       : null;
@@ -1508,11 +1735,16 @@ export const getStorageDashboard = async (options?: StorageListOptions) => {
       isActive: bucket.isActive,
       usedBytes,
       quotaBigInt,
-      activeObjects: bucket.fileObjects.filter((fileObject) => !fileObject.node?.isDeleted).length,
+      activeObjects: bucket.fileObjects.filter(
+        (fileObject) => !fileObject.node?.isDeleted,
+      ).length,
       totalObjects: bucket.fileObjects.length,
     };
   });
-  const usedBytes = allSummaries.reduce((sum, storage) => sum + storage.usedBytes, 0n);
+  const usedBytes = allSummaries.reduce(
+    (sum, storage) => sum + storage.usedBytes,
+    0n,
+  );
   const hasAnyQuota = allSummaries.some((s) => s.quotaBigInt !== null);
   const totalQuotaBigInt = hasAnyQuota
     ? allSummaries.reduce((sum, s) => sum + (s.quotaBigInt ?? 0n), 0n)
@@ -1528,15 +1760,23 @@ export const getStorageDashboard = async (options?: StorageListOptions) => {
     totalStorages: buckets.length,
     activeStorages: allSummaries.filter((storage) => storage.isActive).length,
     connectedStorages: storages.filter(
-      (storage) => storage.status === "connected" || storage.status === "limited",
+      (storage) =>
+        storage.status === "connected" || storage.status === "limited",
     ).length,
-    erroredStorages: storages.filter((storage) => storage.status === "error").length,
+    erroredStorages: storages.filter((storage) => storage.status === "error")
+      .length,
     usedBytes: usedBytes.toString(),
     totalBytes: totalQuotaBigInt?.toString() ?? null,
     quotaBytes: totalQuotaBigInt?.toString() ?? null,
     availableBytes: totalAvailableBigInt?.toString() ?? null,
-    totalObjects: allSummaries.reduce((sum, storage) => sum + storage.totalObjects, 0),
-    activeObjects: allSummaries.reduce((sum, storage) => sum + storage.activeObjects, 0),
+    totalObjects: allSummaries.reduce(
+      (sum, storage) => sum + storage.totalObjects,
+      0,
+    ),
+    activeObjects: allSummaries.reduce(
+      (sum, storage) => sum + storage.activeObjects,
+      0,
+    ),
     totalConnections: buckets.length,
     nextCursor,
     storages,
@@ -1563,11 +1803,17 @@ export const createShareLink = async ({
   expiresIn?: number; // seconds; undefined = no expiry
 }) => {
   const node = await prisma.node.findFirst({
-    where: { id: nodeId, type: "FILE", isDeleted: false, drive: { ownerId: userId } },
+    where: {
+      id: nodeId,
+      type: "FILE",
+      isDeleted: false,
+      drive: { ownerId: userId },
+    },
   });
   if (!node) throw new StorageError("File not found.", 404);
 
-  const expiresAt = expiresIn != null ? new Date(Date.now() + expiresIn * 1000) : null;
+  const expiresAt =
+    expiresIn != null ? new Date(Date.now() + expiresIn * 1000) : null;
 
   const link = await prisma.shareLink.create({
     data: { nodeId, createdById: userId, expiresAt },
@@ -1624,8 +1870,17 @@ export const resolveShareLink = async (token: string) => {
   if (link.expiresAt && link.expiresAt < new Date()) {
     throw new StorageError("This share link has expired.", 410);
   }
-  if (link.node.isDeleted) throw new StorageError("File is no longer available.", 404);
+  if (link.node.isDeleted)
+    throw new StorageError("File is no longer available.", 404);
 
+  if (link.node.fileObjects.some((fo) => fo.chunkIndex !== null)) {
+    return {
+      url: await chunkDownloadUrl(link.node.id, true, 3600, token),
+      name: link.node.name,
+      mimeType: link.node.mimeType,
+      sizeBytes: link.node.sizeBytes.toString(),
+    };
+  }
   const fo = link.node.fileObjects[0];
   if (!fo) throw new StorageError("File data not found.", 404);
 

@@ -28,7 +28,7 @@
   // ],
   //
   // Durable upload finalization (replaces the old pg-boss worker).
-  // Until configured, finalization runs inline via ctx.waitUntil() — see edge.ts.
+  // Until configured, finalization finishes before the response — see edge.ts.
   // To enable durable retries (Workers Paid), first run:
   //   wrangler queues create storaged-upload-finalize
   //   wrangler queues create storaged-upload-finalize-dlq

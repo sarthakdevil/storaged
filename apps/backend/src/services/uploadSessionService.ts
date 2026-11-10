@@ -5,6 +5,9 @@ import {
   ListPartsCommand,
   S3ServiceException,
   UploadPartCommand,
+  PutObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Prisma } from "../generated/prisma/client";
@@ -22,7 +25,8 @@ class UploadError extends Error {
   }
 }
 
-export const isUploadError = (error: unknown): error is UploadError => error instanceof UploadError;
+export const isUploadError = (error: unknown): error is UploadError =>
+  error instanceof UploadError;
 
 type BucketConfig = {
   endpointUrl: string;
@@ -59,7 +63,11 @@ const buildCandidateFileName = (fileName: string, attempt: number) => {
   return `${fileName.slice(0, dotIndex)} (${attempt})${fileName.slice(dotIndex)}`;
 };
 
-const resolveUniqueFilePath = async (driveId: string, parentPath: string, fileName: string) => {
+const resolveUniqueFilePath = async (
+  driveId: string,
+  parentPath: string,
+  fileName: string,
+) => {
   for (let attempt = 0; attempt < 1000; attempt++) {
     const candidateName = buildCandidateFileName(fileName, attempt);
     const candidatePath = `${parentPath}/${candidateName}`;
@@ -109,7 +117,8 @@ const getS3ErrorCode = (error: unknown) => {
 
 const describeS3Failure = (error: unknown) => {
   const code = getS3ErrorCode(error);
-  const message = error instanceof Error ? error.message : "Storage request failed.";
+  const message =
+    error instanceof Error ? error.message : "Storage request failed.";
   return [code, message].filter(Boolean).join(": ");
 };
 
@@ -128,7 +137,7 @@ export const initiateMultipartUpload = async ({
   mimeType?: string;
   sizeBytes: number;
 }) => {
-  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) {
     throw new UploadError("sizeBytes must be a positive number.", 400);
   }
 
@@ -151,7 +160,12 @@ export const initiateMultipartUpload = async ({
   let parentPath = "";
   if (parentId) {
     const parentNode = await prisma.node.findFirst({
-      where: { id: parentId, driveId: drive.id, type: "FOLDER", isDeleted: false },
+      where: {
+        id: parentId,
+        driveId: drive.id,
+        type: "FOLDER",
+        isDeleted: false,
+      },
       select: { path: true },
     });
     if (!parentNode) {
@@ -163,15 +177,36 @@ export const initiateMultipartUpload = async ({
   // Only claims a display name for now — the multipart upload can take a
   // while, so the real collision check happens again at finalize time,
   // right before the Node is actually created.
-  const { name: uniqueName } = await resolveUniqueFilePath(drive.id, parentPath, safeName);
+  const { name: uniqueName } = await resolveUniqueFilePath(
+    drive.id,
+    parentPath,
+    safeName,
+  );
 
   const objectKey = `${userId}/${drive.id}/${crypto.randomUUID()}_${uniqueName}`;
   const partSizeBytes = choosePartSizeBytes(sizeBytes);
-  const reservation = await reserveUpload({
-    userId, driveId: drive.id, parentId, fileName: uniqueName, mimeType,
-    sizeBytes, partSizeBytes, objectKey,
-  }, (message, status) => new UploadError(message, status));
+  const reservation = await reserveUpload(
+    {
+      userId,
+      driveId: drive.id,
+      parentId,
+      fileName: uniqueName,
+      mimeType,
+      sizeBytes,
+      partSizeBytes,
+      objectKey,
+      distributed: true,
+    },
+    (message, status) => new UploadError(message, status),
+  );
   const bucket = reservation.bucket;
+
+  if (reservation.chunks?.length) {
+    return {
+      uploadSessionId: reservation.id,
+      partSizeBytes: reservation.partSizeBytes,
+    };
+  }
 
   let s3Client: ReturnType<typeof createS3Client> | undefined;
   let uploadId: string | undefined;
@@ -211,9 +246,15 @@ export const initiateMultipartUpload = async ({
     };
   } catch (error) {
     if (uploadId) {
-      await s3Client?.send(new AbortMultipartUploadCommand({
-        Bucket: bucket.bucketName, Key: objectKey, UploadId: uploadId,
-      })).catch(() => undefined);
+      await s3Client
+        ?.send(
+          new AbortMultipartUploadCommand({
+            Bucket: bucket.bucketName,
+            Key: objectKey,
+            UploadId: uploadId,
+          }),
+        )
+        .catch(() => undefined);
     }
     await prisma.uploadSession.update({
       where: { id: reservation.id },
@@ -274,22 +315,50 @@ export const getUploadPartUrl = async ({
   expiresInSeconds?: number;
 }) => {
   if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10_000) {
-    throw new UploadError("partNumber must be an integer between 1 and 10000.", 400);
+    throw new UploadError(
+      "partNumber must be an integer between 1 and 10000.",
+      400,
+    );
   }
 
   const session = await prisma.uploadSession.findFirst({
     where: { id: uploadSessionId, userId },
-    include: { bucket: true },
+    include: { bucket: true, chunks: { include: { bucket: true } } },
   });
 
   if (!session) throw new UploadError("Upload session not found.", 404);
 
-  if (session.status === "ABORTED" || session.status === "FAILED" || session.status === "COMPLETED") {
-    throw new UploadError(`Cannot upload parts in status ${session.status}.`, 409);
+  if (session.status !== "INITIATED" && session.status !== "UPLOADING") {
+    throw new UploadError(
+      `Cannot upload parts in status ${session.status}.`,
+      409,
+    );
   }
-  if (!session.uploadId) throw new UploadError("Multipart upload is not ready.", 409);
-  const remainingBytes = Number(session.sizeBytes) - (partNumber - 1) * session.partSizeBytes;
-  if (remainingBytes <= 0) throw new UploadError("Part exceeds the declared file size.", 400);
+  if (session.chunks.length) {
+    const chunk = session.chunks.find((c) => c.partNumber === partNumber);
+    if (!chunk)
+      throw new UploadError("Part exceeds the declared file size.", 400);
+    const url = await getSignedUrl(
+      createS3Client(getBucketConfig(chunk.bucket.config), true),
+      new PutObjectCommand({
+        Bucket: chunk.bucket.bucketName,
+        Key: chunk.objectKey,
+        ContentLength: Number(chunk.sizeBytes),
+      }),
+      { expiresIn: expiresInSeconds },
+    );
+    await prisma.uploadSession.updateMany({
+      where: { id: session.id, status: "INITIATED" },
+      data: { status: "UPLOADING" },
+    });
+    return { url, expiresInSeconds };
+  }
+  if (!session.uploadId)
+    throw new UploadError("Multipart upload is not ready.", 409);
+  const remainingBytes =
+    Number(session.sizeBytes) - (partNumber - 1) * session.partSizeBytes;
+  if (remainingBytes <= 0)
+    throw new UploadError("Part exceeds the declared file size.", 400);
 
   const s3Client = createS3Client(getBucketConfig(session.bucket.config));
 
@@ -301,7 +370,9 @@ export const getUploadPartUrl = async ({
     ContentLength: Math.min(remainingBytes, session.partSizeBytes),
   });
 
-  const url = await getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
+  const url = await getSignedUrl(s3Client, command, {
+    expiresIn: expiresInSeconds,
+  });
 
   if (session.status === "INITIATED") {
     await prisma.uploadSession.update({
@@ -322,10 +393,39 @@ export const listUploadedParts = async ({
 }) => {
   const session = await prisma.uploadSession.findFirst({
     where: { id: uploadSessionId, userId },
-    include: { bucket: true },
+    include: {
+      bucket: true,
+      chunks: { include: { bucket: true }, orderBy: { partNumber: "asc" } },
+    },
   });
 
   if (!session) throw new UploadError("Upload session not found.", 404);
+
+  if (session.chunks.length) {
+    const parts = [];
+    for (const chunk of session.chunks) {
+      try {
+        const head = await createS3Client(
+          getBucketConfig(chunk.bucket.config),
+        ).send(
+          new HeadObjectCommand({
+            Bucket: chunk.bucket.bucketName,
+            Key: chunk.objectKey,
+          }),
+        );
+        parts.push({
+          partNumber: chunk.partNumber,
+          etag: head.ETag ?? "",
+          size: head.ContentLength ?? 0,
+          lastModified: head.LastModified?.toISOString() ?? null,
+        });
+      } catch (error) {
+        if (!["NotFound", "NoSuchKey"].includes(getS3ErrorCode(error) ?? ""))
+          throw error;
+      }
+    }
+    return { parts };
+  }
 
   const s3Client = createS3Client(getBucketConfig(session.bucket.config));
 
@@ -338,12 +438,14 @@ export const listUploadedParts = async ({
       }),
     );
 
-    const parts = (result.Parts ?? []).map((p) => ({
-      partNumber: p.PartNumber ?? 0,
-      etag: p.ETag ?? "",
-      size: p.Size ?? 0,
-      lastModified: p.LastModified?.toISOString() ?? null,
-    })).filter((p) => p.partNumber > 0);
+    const parts = (result.Parts ?? [])
+      .map((p) => ({
+        partNumber: p.PartNumber ?? 0,
+        etag: p.ETag ?? "",
+        size: p.Size ?? 0,
+        lastModified: p.LastModified?.toISOString() ?? null,
+      }))
+      .filter((p) => p.partNumber > 0);
 
     return { parts };
   } catch (error) {
@@ -369,7 +471,13 @@ export const requestUploadCompletion = async ({
       partNumber: Number(p.partNumber),
       etag: String(p.etag),
     }))
-    .filter((p) => Number.isInteger(p.partNumber) && p.partNumber > 0 && p.partNumber <= 10_000 && p.etag.trim());
+    .filter(
+      (p) =>
+        Number.isInteger(p.partNumber) &&
+        p.partNumber > 0 &&
+        p.partNumber <= 10_000 &&
+        p.etag.trim(),
+    );
 
   if (normalized.length !== parts.length) {
     throw new UploadError("Invalid parts payload.", 400);
@@ -377,22 +485,45 @@ export const requestUploadCompletion = async ({
 
   const session = await prisma.uploadSession.findFirst({
     where: { id: uploadSessionId, userId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, sizeBytes: true, partSizeBytes: true },
   });
 
   if (!session) throw new UploadError("Upload session not found.", 404);
 
-  if (session.status === "ABORTED" || session.status === "FAILED" || session.status === "COMPLETED") {
-    throw new UploadError(`Cannot complete upload in status ${session.status}.`, 409);
+  const count = Math.ceil(Number(session.sizeBytes) / session.partSizeBytes);
+  if (
+    normalized.length !== count ||
+    new Set(normalized.map((p) => p.partNumber)).size !== count ||
+    normalized.some((p) => p.partNumber > count)
+  ) {
+    throw new UploadError(
+      "Completion must include every part exactly once.",
+      400,
+    );
   }
 
-  await prisma.uploadSession.update({
-    where: { id: session.id },
+  if (
+    session.status === "ABORTED" ||
+    session.status === "FAILED" ||
+    session.status === "COMPLETED"
+  ) {
+    throw new UploadError(
+      `Cannot complete upload in status ${session.status}.`,
+      409,
+    );
+  }
+
+  if (session.status === "COMPLETING") return { accepted: true };
+  const claimed = await prisma.uploadSession.updateMany({
+    where: { id: session.id, status: { in: ["INITIATED", "UPLOADING"] } },
     data: {
       status: "COMPLETING",
       completedParts: normalized as unknown as Prisma.InputJsonValue,
     },
   });
+
+  if (!claimed.count)
+    throw new UploadError("Upload is no longer accepting completion.", 409);
 
   return { accepted: true };
 };
@@ -406,13 +537,42 @@ export const abortUpload = async ({
 }) => {
   const session = await prisma.uploadSession.findFirst({
     where: { id: uploadSessionId, userId },
-    include: { bucket: true },
+    include: { bucket: true, chunks: { include: { bucket: true } } },
   });
 
   if (!session) throw new UploadError("Upload session not found.", 404);
 
   if (session.status === "COMPLETED") {
     throw new UploadError("Upload is already completed.", 409);
+  }
+
+  if (session.status === "COMPLETING")
+    throw new UploadError("Upload is being finalized.", 409);
+  if (session.chunks.length) {
+    // Keep the reservation if cleanup fails, so occupied bytes stay accounted for.
+    if (session.status === "ABORTED") return { aborted: true };
+    const claim = await prisma.uploadSession.updateMany({
+      where: {
+        id: session.id,
+        status: { in: ["INITIATED", "UPLOADING", "ABORTING", "FAILED"] },
+      },
+      data: { status: "ABORTING" },
+    });
+    if (!claim.count)
+      throw new UploadError("Upload can no longer be aborted.", 409);
+    for (const chunk of session.chunks) {
+      await createS3Client(getBucketConfig(chunk.bucket.config)).send(
+        new DeleteObjectCommand({
+          Bucket: chunk.bucket.bucketName,
+          Key: chunk.objectKey,
+        }),
+      );
+    }
+    await prisma.uploadSession.update({
+      where: { id: session.id },
+      data: { status: "ABORTED" },
+    });
+    return { aborted: true };
   }
 
   const s3Client = createS3Client(getBucketConfig(session.bucket.config));
@@ -450,16 +610,27 @@ export const finalizeUploadNow = async ({
 }) => {
   const session = await prisma.uploadSession.findUnique({
     where: { id: uploadSessionId },
-    include: { bucket: true, drive: true },
+    include: {
+      bucket: true,
+      drive: true,
+      chunks: { include: { bucket: true }, orderBy: { partNumber: "asc" } },
+    },
   });
 
   if (!session) throw new UploadError("Upload session not found.", 404);
 
+  if (session.status === "COMPLETED")
+    return { nodeId: session.nodeId, completed: true };
   if (session.status !== "COMPLETING") {
-    throw new UploadError(`Cannot finalize upload in status ${session.status}.`, 409);
+    throw new UploadError(
+      `Cannot finalize upload in status ${session.status}.`,
+      409,
+    );
   }
 
-  const parts = session.completedParts as unknown as { partNumber: number; etag: string }[] | null;
+  const parts = session.completedParts as unknown as
+    | { partNumber: number; etag: string }[]
+    | null;
   if (!parts || parts.length === 0) {
     throw new UploadError("No completion parts stored for this upload.", 400);
   }
@@ -467,23 +638,46 @@ export const finalizeUploadNow = async ({
   const s3Client = createS3Client(getBucketConfig(session.bucket.config));
 
   try {
-    await s3Client.send(
-      new CompleteMultipartUploadCommand({
-        Bucket: session.bucket.bucketName,
-        Key: session.objectKey,
-        UploadId: session.uploadId,
-        MultipartUpload: {
-          Parts: parts
-            .slice()
-            .sort((a, b) => a.partNumber - b.partNumber)
-            .map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
-        },
-      }),
-    );
+    if (session.chunks.length) {
+      for (const chunk of session.chunks) {
+        const head = await createS3Client(
+          getBucketConfig(chunk.bucket.config),
+        ).send(
+          new HeadObjectCommand({
+            Bucket: chunk.bucket.bucketName,
+            Key: chunk.objectKey,
+          }),
+        );
+        if (
+          head.ContentLength !== Number(chunk.sizeBytes) ||
+          head.ETag !==
+            parts.find((p) => p.partNumber === chunk.partNumber)?.etag
+        ) {
+          throw new UploadError(
+            `Chunk ${chunk.partNumber} failed size or ETag verification.`,
+            409,
+          );
+        }
+      }
+    } else {
+      await s3Client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: session.bucket.bucketName,
+          Key: session.objectKey,
+          UploadId: session.uploadId,
+          MultipartUpload: {
+            Parts: parts
+              .slice()
+              .sort((a, b) => a.partNumber - b.partNumber)
+              .map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
+          },
+        }),
+      );
+    }
   } catch (error) {
     const msg = describeS3Failure(error);
-    await prisma.uploadSession.update({
-      where: { id: session.id },
+    await prisma.uploadSession.updateMany({
+      where: { id: session.id, status: "COMPLETING" },
       data: { status: "FAILED", errorMessage: msg },
     });
     throw new UploadError(msg, 502);
@@ -493,14 +687,22 @@ export const finalizeUploadNow = async ({
   let parentPath = "";
   if (session.parentId) {
     const parentNode = await prisma.node.findFirst({
-      where: { id: session.parentId, driveId: session.driveId, type: "FOLDER", isDeleted: false },
+      where: {
+        id: session.parentId,
+        driveId: session.driveId,
+        type: "FOLDER",
+        isDeleted: false,
+      },
       select: { path: true },
     });
 
     if (!parentNode) {
-      await prisma.uploadSession.update({
-        where: { id: session.id },
-        data: { status: "FAILED", errorMessage: "Parent folder not found during finalize." },
+      await prisma.uploadSession.updateMany({
+        where: { id: session.id, status: "COMPLETING" },
+        data: {
+          status: "FAILED",
+          errorMessage: "Parent folder not found during finalize.",
+        },
       });
       throw new UploadError("Parent folder not found.", 404);
     }
@@ -515,16 +717,32 @@ export const finalizeUploadNow = async ({
   // a free name right before creating the Node, and retry a few times in
   // case of a genuine race against a concurrent finalize.
   const isUniqueConstraintError = (error: unknown) =>
-    Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "P2002");
+    Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002",
+    );
 
   let result;
   let lastError: unknown;
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { name, path } = await resolveUniqueFilePath(session.driveId, parentPath, session.fileName);
+    const { name, path } = await resolveUniqueFilePath(
+      session.driveId,
+      parentPath,
+      session.fileName,
+    );
 
     try {
       result = await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Bucket" WHERE id = ${session.bucketId} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM "Bucket" WHERE "isActive" = true ORDER BY id FOR UPDATE`;
+        const current = await tx.uploadSession.findUniqueOrThrow({
+          where: { id: session.id },
+        });
+        if (current.status === "COMPLETED")
+          return tx.node.findUniqueOrThrow({ where: { id: current.nodeId! } });
+        if (current.status !== "COMPLETING")
+          throw new UploadError("Upload is no longer completing.", 409);
         const node = await tx.node.create({
           data: {
             driveId: session.driveId,
@@ -538,9 +756,25 @@ export const finalizeUploadNow = async ({
           },
         });
 
-        await tx.fileObject.create({
-          data: { nodeId: node.id, bucketId: session.bucketId, objectKey: session.objectKey },
-        });
+        if (session.chunks.length) {
+          await tx.fileObject.createMany({
+            data: session.chunks.map((c) => ({
+              nodeId: node.id,
+              bucketId: c.bucketId,
+              objectKey: c.objectKey,
+              sizeBytes: c.sizeBytes,
+              chunkIndex: c.partNumber,
+            })),
+          });
+        } else {
+          await tx.fileObject.create({
+            data: {
+              nodeId: node.id,
+              bucketId: session.bucketId,
+              objectKey: session.objectKey,
+            },
+          });
+        }
 
         await tx.drive.update({
           where: { id: session.driveId },
@@ -549,7 +783,11 @@ export const finalizeUploadNow = async ({
 
         await tx.uploadSession.update({
           where: { id: session.id },
-          data: { status: "COMPLETED", completedAt: new Date(), nodeId: node.id },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+            nodeId: node.id,
+          },
         });
 
         return node;
@@ -570,8 +808,8 @@ export const finalizeUploadNow = async ({
         ? lastError.message
         : "Finalize failed.";
 
-    await prisma.uploadSession.update({
-      where: { id: session.id },
+    await prisma.uploadSession.updateMany({
+      where: { id: session.id, status: "COMPLETING" },
       data: { status: "FAILED", errorMessage: message },
     });
 

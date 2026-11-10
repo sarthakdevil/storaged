@@ -134,7 +134,14 @@ export default function DrivePage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="drive-file-actions flex items-center gap-3 shrink-0">
+          <div className="drive-file-actions flex flex-wrap items-center gap-3 shrink-0">
+            <button
+              onClick={() => setShowStorage(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50/50 shadow-xs transition"
+            >
+              <Database size={14} />
+              {hasStorage ? "Add another storage" : "Add storage"}
+            </button>
             <button
               onClick={() => setShowNewFolder(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50/50 shadow-xs transition"
@@ -147,7 +154,7 @@ export default function DrivePage() {
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#8b5cf6] hover:bg-[#7c3aed] text-white text-sm font-semibold shadow-[0_6px_18px_-4px_rgba(167,139,250,0.55)] hover:shadow-[0_10px_28px_-4px_rgba(167,139,250,0.7)] hover:-translate-y-px transition-all"
             >
               <Upload size={14} className="stroke-[2.4]" />
-              Upload File
+              Upload files
             </button>
           </div>
         </div>
@@ -234,6 +241,12 @@ export default function DrivePage() {
       {/* Main Content Pane */}
       <div className="drive-content flex-1 py-4">
         <div className="drive-inner">
+          {!isStorageLoading && !hasStorage && (
+            <div className="mb-6 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+              <Database size={20} className="shrink-0 text-slate-400" />
+              <p>Add an S3-compatible storage bucket above to start uploading files.</p>
+            </div>
+          )}
           {isLoading ? (
             <div className="flex flex-col items-center justify-center h-64 gap-3">
               <Loader2 size={32} className="animate-spin text-neon-violet" />
@@ -307,52 +320,6 @@ export default function DrivePage() {
           )}
         </div>
       </div>
-
-      {/* Bottom permanent upload dropzone / connect-storage prompt */}
-      {!isStorageLoading && (
-        <div className="drive-inner mt-8 pb-12 shrink-0">
-          {hasStorage ? (
-            <div
-              onClick={() => setShowUpload(true)}
-              className="w-full border-2 border-dashed border-slate-200 hover:border-neon-violet/50 rounded-[2.5rem] p-12 flex flex-col items-center justify-center text-center cursor-pointer bg-white/40 hover:bg-slate-50/50 transition-all shadow-sm"
-            >
-              <div className="w-12 h-12 rounded-full bg-neon-violet/10 text-electric-indigo flex items-center justify-center mb-4 border border-neon-violet/20 shadow-[0_0_25px_rgba(167,139,250,0.3)]">
-                <span className="font-bold text-lg">+</span>
-              </div>
-              <h3 className="text-base font-bold text-slate-800">Drop files here</h3>
-              <p className="text-sm text-slate-500 mt-1 max-w-sm">
-                Drag and drop any file type to upload them instantly to your cloud storage.
-              </p>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowStorage(true);
-                }}
-                className="text-electric-indigo hover:text-neon-violet text-[10px] font-bold tracking-widest uppercase mt-4 underline underline-offset-4"
-              >
-                Advanced Upload Settings
-              </button>
-            </div>
-          ) : (
-            <div className="w-full border-2 border-dashed border-slate-200 rounded-[2.5rem] p-12 flex flex-col items-center justify-center text-center bg-white/40 shadow-sm">
-              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mb-4 border border-slate-200">
-                <Database size={18} />
-              </div>
-              <h3 className="text-base font-bold text-slate-800">No storage connected</h3>
-              <p className="text-sm text-slate-500 mt-1 max-w-sm">
-                Connect an S3-compatible bucket to start uploading and storing your files.
-              </p>
-              <button
-                onClick={() => setShowStorage(true)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6] hover:bg-[#7c3aed] text-white text-xs font-bold tracking-wide mt-5 shadow-[0_6px_18px_-4px_rgba(167,139,250,0.55)] hover:shadow-[0_10px_28px_-4px_rgba(167,139,250,0.7)] transition-all"
-              >
-                <Database size={14} />
-                Connect a Storage
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Modals */}
       {showUpload && (

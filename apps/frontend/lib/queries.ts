@@ -310,7 +310,7 @@ type InitiateUploadResponse = {
 
 type UploadStatusResponse = {
   id: string;
-  status: "INITIATED" | "UPLOADING" | "COMPLETING" | "COMPLETED" | "FAILED" | "ABORTED";
+  status: "INITIATED" | "UPLOADING" | "COMPLETING" | "COMPLETED" | "FAILED" | "ABORTED" | "ABORTING";
   nodeId: string | null;
   errorMessage: string | null;
 };
@@ -389,6 +389,9 @@ export function useMultipartUploadFile(batch = false) {
         }
 
         if (status.status === "FAILED" || status.status === "ABORTED") {
+          if (status.status === "FAILED") {
+            await api.post(`/uploads/${init.uploadSessionId}/abort`).catch(() => undefined);
+          }
           throw new Error(status.errorMessage ?? "Upload failed");
         }
 

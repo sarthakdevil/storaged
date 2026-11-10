@@ -16,6 +16,6 @@
     "head_sampling_rate": 1
   },
   "vars": {
-    "NEXT_PUBLIC_API_URL": "https://storaged-api.sarthaksahu.dev/api"
+    "NEXT_PUBLIC_API_URL": "https://storaged-api.sarthaksahu.xyz/api"
   }
 }

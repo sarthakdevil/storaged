@@ -13,7 +13,7 @@ type S3Config = {
 // until the platform force-kills it as "hung code" instead of failing fast.
 const REQUEST_TIMEOUT_MS = 10_000;
 
-export const createS3Client = (config: S3Config) => {
+export const createS3Client = (config: S3Config, browserUpload = false) => {
   return new S3Client({
     endpoint: config.endpointUrl,
     region: config.region,
@@ -22,6 +22,9 @@ export const createS3Client = (config: S3Config) => {
       secretAccessKey: config.secretAccessKey,
     },
     forcePathStyle: config.forcePathStyle,
+    // A presigner has no file body. Do not sign the SDK's empty-body CRC32
+    // into a URL that the browser will use to upload different bytes.
+    requestChecksumCalculation: browserUpload ? "WHEN_REQUIRED" : "WHEN_SUPPORTED",
     requestHandler: { requestTimeout: REQUEST_TIMEOUT_MS },
   });
 };

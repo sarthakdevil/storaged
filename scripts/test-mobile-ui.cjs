@@ -63,7 +63,7 @@ const key = { id: 'key-1', name: longName, prefix: 'sk_test_prefix', lastUsedAt:
         assert(box.x >= -1 && box.y >= -1 && box.x + box.width <= viewport.width + 1 && box.y + box.height <= viewport.height + 1, `${label}: dialog outside viewport ${JSON.stringify(box)}`);
       }
       console.log(`PASS ${label}`);
-      if (screenshotDir && /390x844|844x390/.test(label)) {
+      if (screenshotDir && /390x844|844x390|1280x800.*IDrive/.test(label)) {
         await page.screenshot({ path: require('node:path').join(screenshotDir, label.replace(/[^a-z0-9]+/gi, '-') + '.png') });
       }
     }
@@ -93,7 +93,7 @@ const key = { id: 'key-1', name: longName, prefix: 'sk_test_prefix', lastUsedAt:
           await page.getByRole('dialog').waitFor(); await check(`${size} preview`); await closeDialog();
           await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
           await page.getByRole('dialog').waitFor(); await check(`${size} edit`); await closeDialog();
-          for (const name of [/New Folder/, /Upload File/]) {
+          for (const name of [/New Folder/, /Upload files/i]) {
             await page.getByRole('button', { name }).click();
             await page.getByRole('dialog').waitFor(); await check(`${size} ${name}`); await closeDialog();
           }
@@ -111,7 +111,14 @@ const key = { id: 'key-1', name: longName, prefix: 'sk_test_prefix', lastUsedAt:
           await page.getByRole('button', { name: 'Edit', exact: false }).first().click();
           await page.getByRole('dialog').waitFor();
           await page.locator('.storage-submit-button').click({ trial: true });
-          await check(`${size} storage settings`); await closeDialog();
+          await check(`${size} storage settings`);
+          await page.getByRole('button', { name: /IDrive e2/ }).click();
+          await page.getByRole('combobox', { name: 'Region', exact: true }).scrollIntoViewIfNeeded();
+          const region = await page.getByRole('combobox', { name: 'Region', exact: true }).boundingBox();
+          const endpoint = await page.getByLabel('Endpoint URL', { exact: true }).boundingBox();
+          assert(region.x + region.width <= endpoint.x + 1 || region.y + region.height <= endpoint.y + 1,
+            `${size}: region overlaps the endpoint field`);
+          await check(`${size} IDrive region fields`); await closeDialog();
         }
         if (route === '/drive/trash') {
           await page.getByRole('button', { name: 'Delete permanently', exact: true }).first().click();

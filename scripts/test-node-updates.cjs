@@ -56,6 +56,8 @@ test('node update API returns folder membership and creation metadata for starre
     '../utils/prisma': { prisma },
     '../generated/prisma/client': { Prisma: {} },
     '../utils/s3': {},
+    './chunkDownload': {},
+    './bucketCapacity': {},
     '../utils/storageschemas': {},
   });
   for (const parentId of [null, 'nested-folder']) {

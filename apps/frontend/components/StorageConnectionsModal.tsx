@@ -183,39 +183,22 @@ type RegionSelectProps = {
 };
 
 function RegionSelect({ value, options, onChange }: RegionSelectProps) {
-  const [open, setOpen] = useState(false);
   const selected = options.find((option) => option.value === value) ?? options[0];
 
   return (
     <div className="storage-region-select">
-      <button
-        type="button"
-        className={`storage-region-trigger ${open ? "storage-region-trigger-open" : ""}`}
-        onClick={() => setOpen((current) => !current)}
+      <select
+        aria-label="Region"
+        value={selected.value}
+        title={`${selected.label} (${selected.value})`}
+        onChange={(event) => onChange(event.target.value)}
       >
-        <span>{selected.label}</span>
-        <small>{selected.value}</small>
-      </button>
-      {open && (
-        <div className="storage-region-menu">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`storage-region-option ${
-                option.value === selected.value ? "storage-region-option-active" : ""
-              }`}
-              onClick={() => {
-                onChange(option.value);
-                setOpen(false);
-              }}
-            >
-              <span>{option.label}</span>
-              <small>{option.value}</small>
-            </button>
-          ))}
-        </div>
-      )}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label} ({option.value})
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

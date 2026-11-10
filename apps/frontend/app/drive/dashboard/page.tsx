@@ -7,6 +7,7 @@ import {
   HardDrive,
   Loader2,
   Pencil,
+  Plus,
   Server,
   Trash2,
 } from "lucide-react";
@@ -51,7 +52,7 @@ export default function StorageDashboardPage() {
 
   return (
     <div className="drive-view flex flex-col h-full">
-      <header className="flex items-center gap-3 px-8 py-4 bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="flex flex-wrap items-center gap-3 px-8 py-4 bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="w-9 h-9 bg-neon-violet/10 rounded-xl flex items-center justify-center">
           <HardDrive size={18} className="text-electric-indigo" />
         </div>
@@ -59,14 +60,27 @@ export default function StorageDashboardPage() {
           <h1 className="font-display text-base font-semibold text-slate-900">Storage dashboard</h1>
           <p className="text-xs text-slate-500">Connected buckets, usage, and health</p>
         </div>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="drive-action-button drive-action-secondary ml-auto"
-        >
-          {isFetching ? <Loader2 size={15} className="animate-spin" /> : <Server size={15} />}
-          Refresh
-        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              setEditConnectionId(undefined);
+              setEditConnection(undefined);
+              setShowStorageModal(true);
+            }}
+            className="drive-action-button drive-action-primary"
+          >
+            <Plus size={15} />
+            {storages.length > 0 ? "Add another storage" : "Add storage"}
+          </button>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="drive-action-button drive-action-secondary"
+          >
+            {isFetching ? <Loader2 size={15} className="animate-spin" /> : <Server size={15} />}
+            Refresh
+          </button>
+        </div>
       </header>
 
       <main className="dashboard-content">

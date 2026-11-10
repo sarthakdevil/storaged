@@ -45,8 +45,9 @@ import {
   uploadFile,
 } from "./services/storageService";
 import { createApiKey, listApiKeys, revokeApiKey } from "./services/apiKeyService";
-import { prisma, configurePrisma, disconnectPrisma } from "./utils/prisma";
+import { prisma, configurePrisma, disconnectPrisma, withPrismaContext } from "./utils/prisma";
 import { configureRuntimeEnv } from "./utils/runtimeEnv";
+import { streamChunkDownload } from "./services/chunkDownload";
 import { requireAuth, requireApiKey, getBearerToken } from "@repo/auth";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -75,8 +76,9 @@ const scheduleFinalize = (env: Env, ctx: ExecutionContext, uploadSessionId: stri
   if (env.UPLOAD_QUEUE) {
     return env.UPLOAD_QUEUE.send({ uploadSessionId });
   }
-  ctx.waitUntil(finalizeUploadNow({ uploadSessionId }));
-  return Promise.resolve();
+  // The request's finally block closes its database pool. Without a queue,
+  // finish before responding so finalization cannot race that cleanup.
+  return finalizeUploadNow({ uploadSessionId }).then(() => undefined);
 };
 
 type HandlerContext = {
@@ -107,6 +109,9 @@ const json = (body: unknown, init: ResponseInit = {}) =>
       ...init.headers,
     },
   });
+
+const fileLink = <T extends { url: string }>(result: T, request: Request): T =>
+  ({ ...result, url: new URL(result.url, request.url).toString() });
 
 const getCorsHeaders = (request: Request, env: Env): HeadersInit => {
   const origin = request.headers.get("origin") ?? "";
@@ -319,12 +324,12 @@ const routes: Route[] = [
   route("GET", "/api/files/:nodeId/preview", async ({ request, url, params }) => {
     const userId = await requireAuth(request, prisma);
     const expiresIn = Number(url.searchParams.get("expiresIn") ?? 900);
-    return json(await previewFile({ userId, nodeId: params.nodeId, expiresIn }));
+    return json(fileLink(await previewFile({ userId, nodeId: params.nodeId, expiresIn }), request));
   }),
   route("GET", "/api/files/:nodeId/download", async ({ request, url, params }) => {
     const userId = await requireAuth(request, prisma);
     const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
-    return json(await downloadFile({ userId, nodeId: params.nodeId, expiresIn }));
+    return json(fileLink(await downloadFile({ userId, nodeId: params.nodeId, expiresIn }), request));
   }),
   route("PATCH", "/api/files/:nodeId", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
@@ -356,7 +361,8 @@ const routes: Route[] = [
     const userId = await requireAuth(request, prisma);
     return json(await revokeShareLink({ userId, linkId: params.linkId }));
   }),
-  route("GET", "/api/share/:token", async ({ params }) => json(await resolveShareLink(params.token))),
+  route("GET", "/api/share/:token", async ({ params, request }) => json(fileLink(await resolveShareLink(params.token), request))),
+  route("GET", "/api/content/:token", async ({ params, request }) => streamChunkDownload(params.token, request)),
 
   route("POST", "/api/uploads/initiate", async ({ request }) => {
     const userId = await requireAuth(request, prisma);
@@ -471,7 +477,7 @@ const routes: Route[] = [
   route("GET", "/api/v1/files/:id/download", async ({ request, url, params, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
     const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
-    return json(await downloadFile({ userId, nodeId: params.id, expiresIn }));
+    return json(fileLink(await downloadFile({ userId, nodeId: params.id, expiresIn }), request));
   }),
   route("GET", "/api/v1/files/:id/preview", async ({ request, url, params, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
@@ -530,69 +536,108 @@ const configureForRequest = (env: Env) => {
 };
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    configureForRequest(env);
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    return withPrismaContext(async () => {
+      configureForRequest(env);
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: getCorsHeaders(request, env) });
-    }
-
-    const url = new URL(request.url);
-
-    if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
-      url.pathname = url.pathname.slice(0, -1);
-      return Response.redirect(url.toString(), 308);
-    }
-
-    try {
-      for (const routeDef of routes) {
-        if (routeDef.method !== request.method) continue;
-        const match = url.pathname.match(routeDef.pattern);
-        if (!match) continue;
-
-        const response = await routeDef.handler({
-          request,
-          env,
-          ctx,
-          url,
-          params: getParams(routeDef, match),
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: getCorsHeaders(request, env),
         });
-        return withCors(response, request, env);
       }
 
-      return withCors(json({ message: "Not found." }, { status: 404 }), request, env);
-    } catch (error) {
-      return withCors(handleError(error), request, env);
-    } finally {
-      // Workers isolate I/O per request — a `pg` Pool's TCP connection can't
-      // be safely reused across separate fetch() invocations. Hyperdrive
-      // keeps the real upstream Postgres connection warm, so tearing this
-      // down and reconnecting each request stays cheap.
-      ctx.waitUntil(disconnectPrisma());
-    }
+      const url = new URL(request.url);
+
+      if (url.pathname.length > 1 && url.pathname.endsWith("/")) {
+        url.pathname = url.pathname.slice(0, -1);
+        return Response.redirect(url.toString(), 308);
+      }
+
+      try {
+        for (const routeDef of routes) {
+          if (routeDef.method !== request.method) continue;
+          const match = url.pathname.match(routeDef.pattern);
+          if (!match) continue;
+
+          const response = await routeDef.handler({
+            request,
+            env,
+            ctx,
+            url,
+            params: getParams(routeDef, match),
+          });
+          return withCors(response, request, env);
+        }
+
+        return withCors(
+          json({ message: "Not found." }, { status: 404 }),
+          request,
+          env,
+        );
+      } catch (error) {
+        return withCors(handleError(error), request, env);
+      } finally {
+        // Workers isolate I/O per request — a `pg` Pool's TCP connection can't
+        // be safely reused across separate fetch() invocations. Hyperdrive
+        // keeps the real upstream Postgres connection warm, so tearing this
+        // down and reconnecting each request stays cheap.
+        ctx.waitUntil(disconnectPrisma());
+      }
+    });
   },
 
   // Durable upload finalization consumer. Only invoked when the UPLOAD_QUEUE
   // binding + consumer are configured in wrangler.jsonc; Cloudflare Queues
   // handles retries/DLQ per that config.
-  async queue(batch: MessageBatch<UploadFinalizeMessage>, env: Env): Promise<void> {
-    configureForRequest(env);
-
-    for (const message of batch.messages) {
+  async queue(
+    batch: MessageBatch<UploadFinalizeMessage>,
+    env: Env,
+  ): Promise<void> {
+    return withPrismaContext(async () => {
+      configureForRequest(env);
       try {
-        await finalizeUploadNow({ uploadSessionId: message.body.uploadSessionId });
-        message.ack();
-      } catch (error) {
-        console.error("Upload finalization failed", message.body.uploadSessionId, error);
-        message.retry();
+        for (const message of batch.messages) {
+          try {
+            await finalizeUploadNow({
+              uploadSessionId: message.body.uploadSessionId,
+            });
+            message.ack();
+          } catch (error) {
+            console.error(
+              "Upload finalization failed",
+              message.body.uploadSessionId,
+              error,
+            );
+            message.retry();
+          }
+        }
+      } finally {
+        await disconnectPrisma();
       }
-    }
+    });
   },
 
   // Cloudflare Workers Scheduled Event handler (Cron Trigger).
   // Automatically purges items from the trash older than 30 days.
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    configureForRequest(env);
-    ctx.waitUntil(purgeExpiredTrash());
+  async scheduled(
+    event: ScheduledEvent,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    ctx.waitUntil(
+      withPrismaContext(async () => {
+        configureForRequest(env);
+        try {
+          await purgeExpiredTrash();
+        } finally {
+          await disconnectPrisma();
+        }
+      }),
+    );
   },
 };

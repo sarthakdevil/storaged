@@ -1,81 +1,78 @@
+﻿import { AsyncLocalStorage } from "node:async_hooks";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { PrismaClient } from "../generated/prisma/client";
-import { logger } from "../utils/logger";
+import { logger } from "./logger";
 import { getRuntimeValue } from "./runtimeEnv";
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __prisma__: PrismaClient | undefined;
-}
+type DatabaseContext = {
+  client?: PrismaClient;
+  pool?: Pool;
+  connectionString?: string;
+};
 
-let prismaClient: PrismaClient | undefined = globalThis.__prisma__;
-let prismaConnectionString: string | undefined;
-let currentPool: Pool | undefined;
+// Concurrent Worker requests must never share request-bound sockets or cleanup.
+const databaseScope = new AsyncLocalStorage<DatabaseContext>();
+export const withPrismaContext = <T>(work: () => T): T =>
+  databaseScope.run({}, work);
+
+const context = () => {
+  const value = databaseScope.getStore();
+  if (!value) throw new Error("Database access requires a request context.");
+  return value;
+};
 
 export const configurePrisma = (connectionString: string) => {
-  if (prismaClient && prismaConnectionString === connectionString) {
-    return prismaClient;
+  const state = context();
+  if (state.client) {
+    if (state.connectionString !== connectionString) {
+      throw new Error(
+        "Cannot change the database connection during a request.",
+      );
+    }
+    return state.client;
   }
-
-  if (currentPool) {
-    currentPool.end().catch(() => {});
-  }
-
   logger.info("Initializing Prisma database adapter");
-
-  const pool = new Pool({
+  state.pool = new Pool({
     connectionString,
     max: 1,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
   });
-  currentPool = pool;
-  
-  const adapter = new PrismaPg(pool);
-  prismaClient = new PrismaClient({ adapter });
-  prismaConnectionString = connectionString;
-
-  if (process.env.NODE_ENV !== "production") {
-    globalThis.__prisma__ = prismaClient;
-  }
-
-  return prismaClient;
+  state.client = new PrismaClient({ adapter: new PrismaPg(state.pool) });
+  state.connectionString = connectionString;
+  return state.client;
 };
 
 export const disconnectPrisma = async () => {
-  if (prismaClient) {
-    try {
-      await prismaClient.$disconnect();
-    } catch {}
-    prismaClient = undefined;
+  const state = context();
+  const { client, pool } = state;
+  state.client = undefined;
+  state.pool = undefined;
+  state.connectionString = undefined;
+  try {
+    await client?.$disconnect();
+  } finally {
+    await pool?.end();
   }
-  if (currentPool) {
-    try {
-      await currentPool.end();
-    } catch {}
-    currentPool = undefined;
-  }
-  prismaConnectionString = undefined;
-  globalThis.__prisma__ = undefined;
 };
 
 export const getPrisma = () => {
-  if (prismaClient) {
-    return prismaClient;
-  }
-
-  const connectionString = getRuntimeValue("DIRECT_URL") ?? getRuntimeValue("DATABASE_URL");
-
-  if (!connectionString) {
-    throw new Error("DIRECT_URL or DATABASE_URL is required to initialize Prisma.");
-  }
-
+  const state = context();
+  if (state.client) return state.client;
+  const connectionString =
+    getRuntimeValue("DIRECT_URL") ?? getRuntimeValue("DATABASE_URL");
+  if (!connectionString)
+    throw new Error(
+      "DIRECT_URL or DATABASE_URL is required to initialize Prisma.",
+    );
   return configurePrisma(connectionString);
 };
 
 export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, property, receiver) {
-    return Reflect.get(getPrisma(), property, receiver);
+  get(_target, property) {
+    const client = getPrisma();
+    const value = Reflect.get(client, property, client);
+    return typeof value === "function" ? value.bind(client) : value;
   },
 });

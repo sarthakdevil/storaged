@@ -1,6 +1,7 @@
 // ─── Upload session types ─────────────────────────────────────────────────────
 
 export type UploadSessionStatus =
+  | "ABORTING"
   | "INITIATED"
   | "UPLOADING"
   | "COMPLETING"

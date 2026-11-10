@@ -31,6 +31,7 @@ enum NodeType {
 }
 
 enum UploadSessionStatus {
+  ABORTING
   INITIATED
   UPLOADING
   COMPLETING
@@ -169,6 +170,7 @@ model NodeTag {
 // ─── Storage buckets ──────────────────────────────────────────────────────────
 
 model Bucket {
+  uploadChunks UploadChunk[]
   id             String          @id @default(uuid())
   providerName   String
   displayName    String?
@@ -184,6 +186,9 @@ model Bucket {
 }
 
 model FileObject {
+  // Null for legacy whole-file objects.
+  sizeBytes BigInt?
+  chunkIndex Int?
   id        String   @id @default(uuid())
   nodeId    String
   node      Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
@@ -235,6 +240,7 @@ model ShareLink {
 // ─── Multipart/resumable uploads ─────────────────────────────────────────────
 
 model UploadSession {
+  chunks UploadChunk[]
   id           String              @id @default(uuid())
   status       UploadSessionStatus @default(INITIATED)
 
@@ -270,4 +276,18 @@ model UploadSession {
   @@index([userId, status])
   @@index([driveId])
   @@index([bucketId, objectKey])
+}
+
+model UploadChunk {
+  id String @id @default(uuid())
+  sessionId String
+  session UploadSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  bucketId String
+  bucket Bucket @relation(fields: [bucketId], references: [id], onDelete: Restrict)
+  partNumber Int
+  sizeBytes BigInt
+  objectKey String
+
+  @@unique([sessionId, partNumber])
+  @@index([bucketId])
 }
