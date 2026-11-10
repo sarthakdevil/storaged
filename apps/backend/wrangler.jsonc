@@ -6,7 +6,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "head_sampling_rate": 1,
   },
   "vars": {
     "ENVIRONMENT": "production",
@@ -15,36 +15,29 @@
   },
 
   "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "43c306f298254cc6b475dbb8e14ae869" }
+    { "binding": "HYPERDRIVE", "id": "43c306f298254cc6b475dbb8e14ae869" },
   ],
   "triggers": {
-    "crons": ["0 0 * * *"]
-  }
-
-  // Add these bindings after creating Cloudflare resources:
-  //
-  // "r2_buckets": [
-  //   { "binding": "STORAGE_BUCKET", "bucket_name": "storaged-files" }
-  // ],
-  //
-  // Durable upload finalization (replaces the old pg-boss worker).
-  // Until configured, finalization finishes before the response — see edge.ts.
-  // To enable durable retries (Workers Paid), first run:
-  //   wrangler queues create storaged-upload-finalize
-  //   wrangler queues create storaged-upload-finalize-dlq
-  // then uncomment:
-  //
-  // "queues": {
-  //   "producers": [
-  //     { "binding": "UPLOAD_QUEUE", "queue": "storaged-upload-finalize" }
-  //   ],
-  //   "consumers": [
-  //     {
-  //       "queue": "storaged-upload-finalize",
-  //       "max_retries": 5,
-  //       "max_batch_size": 10,
-  //       "dead_letter_queue": "storaged-upload-finalize-dlq"
-  //     }
-  //   ]
-  // }
+    "crons": ["0 0 * * *", "*/5 * * * *"],
+  },
+  "queues": {
+    "producers": [
+      { "binding": "UPLOAD_QUEUE", "queue": "storaged-upload-finalize" },
+    ],
+    "consumers": [
+      {
+        "queue": "storaged-upload-finalize",
+        "max_retries": 5,
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_concurrency": 2,
+        "dead_letter_queue": "storaged-upload-finalize-dlq",
+      },
+      {
+        "queue": "storaged-upload-finalize-dlq",
+        "max_retries": 5,
+        "max_batch_size": 1,
+      },
+    ],
+  },
 }

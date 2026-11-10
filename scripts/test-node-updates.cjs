@@ -58,6 +58,9 @@ test('node update API returns folder membership and creation metadata for starre
     '../utils/s3': {},
     './chunkDownload': {},
     './bucketCapacity': {},
+    './storageAccess': {},
+    '../utils/credentialEncryption': {},
+    '../utils/runtimeEnv': {},
     '../utils/storageschemas': {},
   });
   for (const parentId of [null, 'nested-folder']) {

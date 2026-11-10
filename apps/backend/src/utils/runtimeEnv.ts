@@ -1,4 +1,5 @@
 export type RuntimeEnv = {
+  STORAGE_ENCRYPTION_KEY?: string;
   DATABASE_URL?: string;
   DIRECT_URL?: string;
   FRONTEND_URL?: string;

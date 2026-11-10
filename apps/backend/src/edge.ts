@@ -48,34 +48,31 @@ import { createApiKey, listApiKeys, revokeApiKey } from "./services/apiKeyServic
 import { prisma, configurePrisma, disconnectPrisma, withPrismaContext } from "./utils/prisma";
 import { configureRuntimeEnv } from "./utils/runtimeEnv";
 import { streamChunkDownload } from "./services/chunkDownload";
+import { consumeFinalizations, recoverPendingFinalizations } from "./services/uploadFinalization";
 import { requireAuth, requireApiKey, getBearerToken } from "@repo/auth";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-type Env = {
-  ENVIRONMENT?: string;
-  FRONTEND_ORIGIN?: string;
-  FRONTEND_ORIGINS?: string;
-  FRONTEND_URL?: string;
-  APP_URL?: string;
-  DATABASE_URL?: string;
-  DIRECT_URL?: string;
-  RESEND_KEY?: string;
-  JWT_SECRET?: string;
-  HYPERDRIVE?: Hyperdrive;
-  // Optional: durable upload finalization (see wrangler.jsonc). When absent,
-  // finalization falls back to ctx.waitUntil() in the request lifetime.
-  UPLOAD_QUEUE?: Queue<UploadFinalizeMessage>;
-};
+type Env = Cloudflare.Env & { APP_URL?: string };
 
 type UploadFinalizeMessage = { uploadSessionId: string };
 
 // Enqueue durable finalization when the queue binding exists; otherwise run it
 // inline before the request context ends.
-const scheduleFinalize = (env: Env, ctx: ExecutionContext, uploadSessionId: string) => {
+const scheduleFinalize = (
+  env: Env,
+  ctx: ExecutionContext,
+  uploadSessionId: string,
+) => {
   if (env.UPLOAD_QUEUE) {
     return env.UPLOAD_QUEUE.send({ uploadSessionId });
   }
+  if (env.ENVIRONMENT === "production")
+    throw {
+      statusCode: 503,
+      message:
+        "Upload finalization queue is unavailable. Completion will recover when the queue is restored.",
+    };
   // The request's finally block closes its database pool. Without a queue,
   // finish before responding so finalization cannot race that cleanup.
   return finalizeUploadNow({ uploadSessionId }).then(() => undefined);
@@ -102,41 +99,59 @@ type HttpErrorLike = {
 };
 
 const json = (body: unknown, init: ResponseInit = {}) =>
-  new Response(JSON.stringify(body, (_key, value) => (typeof value === "bigint" ? value.toString() : value)), {
-    ...init,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      ...init.headers,
+  new Response(
+    JSON.stringify(body, (_key, value) =>
+      typeof value === "bigint" ? value.toString() : value,
+    ),
+    {
+      ...init,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        ...init.headers,
+      },
     },
-  });
+  );
 
-const fileLink = <T extends { url: string }>(result: T, request: Request): T =>
-  ({ ...result, url: new URL(result.url, request.url).toString() });
+const fileLink = <T extends { url: string }>(
+  result: T,
+  request: Request,
+): T => ({ ...result, url: new URL(result.url, request.url).toString() });
 
 const getCorsHeaders = (request: Request, env: Env): HeadersInit => {
   const origin = request.headers.get("origin") ?? "";
   const allowedOrigin = env.FRONTEND_ORIGIN ?? "*";
 
-  const isLocal = origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:");
-  const additionalOrigins = (env.FRONTEND_ORIGINS ?? "").split(",").map((value) => value.trim());
-  const isAllowed = origin === allowedOrigin || additionalOrigins.includes(origin) || isLocal;
+  const isLocal =
+    origin.startsWith("http://localhost:") ||
+    origin.startsWith("http://127.0.0.1:");
+  const additionalOrigins = (env.FRONTEND_ORIGINS ?? "")
+    .split(",")
+    .map((value) => value.trim());
+  const isAllowed =
+    origin === allowedOrigin || additionalOrigins.includes(origin) || isLocal;
 
   return {
     "access-control-allow-origin": isAllowed ? origin : allowedOrigin,
     "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,x-api-key",
     "access-control-max-age": "86400",
-    "vary": "Origin",
+    vary: "Origin",
   };
 };
 
 const withCors = (response: Response, request: Request, env: Env) => {
   const headers = new Headers(response.headers);
-  Object.entries(getCorsHeaders(request, env)).forEach(([key, value]) => headers.set(key, String(value)));
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  Object.entries(getCorsHeaders(request, env)).forEach(([key, value]) =>
+    headers.set(key, String(value)),
+  );
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 };
 
-const bodyJson = async <T>(request: Request): Promise<T> => {
+const bodyJson = async <T,>(request: Request): Promise<T> => {
   if (!request.headers.get("content-type")?.includes("application/json")) {
     return {} as T;
   }
@@ -175,8 +190,8 @@ const parseMultipartFile = async (request: Request) => {
   };
 };
 
-const stringValue = (value: unknown) => (typeof value === "string" && value ? value : undefined);
-
+const stringValue = (value: unknown) =>
+  typeof value === "string" && value ? value : undefined;
 
 const getRequestMeta = (request: Request) => ({
   ipAddress: request.headers.get("cf-connecting-ip") ?? undefined,
@@ -201,7 +216,12 @@ const route = (
 };
 
 const getParams = (routeDef: Route, match: RegExpMatchArray) =>
-  Object.fromEntries(routeDef.keys.map((key, index) => [key, decodeURIComponent(match[index + 1] ?? "")]));
+  Object.fromEntries(
+    routeDef.keys.map((key, index) => [
+      key,
+      decodeURIComponent(match[index + 1] ?? ""),
+    ]),
+  );
 
 const getPaginationOptions = (url: URL) => {
   const limit = Number(url.searchParams.get("limit") ?? undefined);
@@ -218,7 +238,10 @@ const handleError = (error: unknown) => {
 
   const err = error as HttpErrorLike;
   if (typeof err?.statusCode === "number") {
-    return json({ message: err.message ?? "Something went wrong." }, { status: err.statusCode });
+    return json(
+      { message: err.message ?? "Something went wrong." },
+      { status: err.statusCode },
+    );
   }
 
   console.error("Request error", error);
@@ -236,7 +259,11 @@ const routes: Route[] = [
   ),
 
   route("POST", "/api/auth/register", async ({ request }) => {
-    const body = await bodyJson<{ email?: string; password?: string; name?: string }>(request);
+    const body = await bodyJson<{
+      email?: string;
+      password?: string;
+      name?: string;
+    }>(request);
     return json(
       await registerUser({
         email: body.email ?? "",
@@ -257,62 +284,116 @@ const routes: Route[] = [
       }),
     );
   }),
-  route("POST", "/api/auth/logout", async ({ request }) => json(await logoutUser({ token: getBearerToken(request) }))),
+  route("POST", "/api/auth/logout", async ({ request }) =>
+    json(await logoutUser({ token: getBearerToken(request) })),
+  ),
   route("POST", "/api/auth/forgot-password", async ({ request }) => {
     const body = await bodyJson<{ email?: string }>(request);
     return json(await requestPasswordReset({ email: body.email ?? "" }));
   }),
   route("POST", "/api/auth/reset-password", async ({ request }) => {
     const body = await bodyJson<{ token?: string; password?: string }>(request);
-    return json(await resetPassword({ token: body.token ?? "", password: body.password ?? "" }));
+    return json(
+      await resetPassword({
+        token: body.token ?? "",
+        password: body.password ?? "",
+      }),
+    );
   }),
 
   route("POST", "/api/storage/connections", async ({ request }) => {
-    await requireAuth(request, prisma);
-    return json(await createStorageConnection(await bodyJson(request)), { status: 201 });
+    const userId = await requireAuth(request, prisma);
+    return json(
+      await createStorageConnection(await bodyJson(request), userId),
+      { status: 201 },
+    );
   }),
   route("GET", "/api/storage/connections", async ({ request, url }) => {
-    await requireAuth(request, prisma);
-    return json(await listStorageConnections(getPaginationOptions(url)));
+    const userId = await requireAuth(request, prisma);
+    return json(
+      await listStorageConnections(getPaginationOptions(url), userId),
+    );
   }),
   route("GET", "/api/storage/dashboard", async ({ request, url }) => {
-    await requireAuth(request, prisma);
-    return json(await getStorageDashboard(getPaginationOptions(url)));
+    const userId = await requireAuth(request, prisma);
+    return json(await getStorageDashboard(getPaginationOptions(url), userId));
   }),
   route("GET", "/api/storage/connections/:id", async ({ request, params }) => {
-    await requireAuth(request, prisma);
-    return json(await getStorageConnection(params.id));
+    const userId = await requireAuth(request, prisma);
+    return json(await getStorageConnection(params.id, userId));
   }),
-  route("PATCH", "/api/storage/connections/:id", async ({ request, params }) => {
-    await requireAuth(request, prisma);
-    return json(await updateStorageConnection({ id: params.id, input: await bodyJson(request) }));
-  }),
-  route("DELETE", "/api/storage/connections/:id", async ({ request, params }) => {
-    await requireAuth(request, prisma);
-    return json(await deleteStorageConnection(params.id));
-  }),
+  route(
+    "PATCH",
+    "/api/storage/connections/:id",
+    async ({ request, params }) => {
+      const userId = await requireAuth(request, prisma);
+      return json(
+        await updateStorageConnection(
+          { id: params.id, input: await bodyJson(request) },
+          userId,
+        ),
+      );
+    },
+  ),
+  route(
+    "DELETE",
+    "/api/storage/connections/:id",
+    async ({ request, params }) => {
+      const userId = await requireAuth(request, prisma);
+      return json(await deleteStorageConnection(params.id, userId));
+    },
+  ),
 
   route("GET", "/api/files", async ({ request, url }) => {
     const userId = await requireAuth(request, prisma);
-    return json(await listFiles({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+    return json(
+      await listFiles({
+        userId,
+        driveId: url.searchParams.get("driveId") ?? undefined,
+      }),
+    );
   }),
   route("GET", "/api/files/trash", async ({ request, url }) => {
     const userId = await requireAuth(request, prisma);
-    return json(await listTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+    return json(
+      await listTrash({
+        userId,
+        driveId: url.searchParams.get("driveId") ?? undefined,
+      }),
+    );
   }),
   route("DELETE", "/api/files/trash", async ({ request, url }) => {
     const userId = await requireAuth(request, prisma);
-    return json(await emptyTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+    return json(
+      await emptyTrash({
+        userId,
+        driveId: url.searchParams.get("driveId") ?? undefined,
+      }),
+    );
   }),
   route("GET", "/api/storage/quota", async ({ request, url }) => {
     const userId = await requireAuth(request, prisma);
-    return json(await getUserStorageQuota({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+    return json(
+      await getUserStorageQuota({
+        userId,
+        driveId: url.searchParams.get("driveId") ?? undefined,
+      }),
+    );
   }),
   route("POST", "/api/files/folders", async ({ request }) => {
     const userId = await requireAuth(request, prisma);
-    const body = await bodyJson<{ name?: string; driveId?: string; parentId?: string }>(request);
+    const body = await bodyJson<{
+      name?: string;
+      driveId?: string;
+      parentId?: string;
+    }>(request);
     return json(
-      await createFolder({ userId, name: body.name ?? "", driveId: body.driveId, parentId: body.parentId }),
+      await createFolder({
+        userId,
+        name: body.name ?? "",
+        driveId: body.driveId,
+        parentId: body.parentId,
+      }),
       { status: 201 },
     );
   }),
@@ -321,20 +402,45 @@ const routes: Route[] = [
     const file = await parseMultipartFile(request);
     return json(await uploadFile({ userId, ...file }), { status: 201 });
   }),
-  route("GET", "/api/files/:nodeId/preview", async ({ request, url, params }) => {
-    const userId = await requireAuth(request, prisma);
-    const expiresIn = Number(url.searchParams.get("expiresIn") ?? 900);
-    return json(fileLink(await previewFile({ userId, nodeId: params.nodeId, expiresIn }), request));
-  }),
-  route("GET", "/api/files/:nodeId/download", async ({ request, url, params }) => {
-    const userId = await requireAuth(request, prisma);
-    const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
-    return json(fileLink(await downloadFile({ userId, nodeId: params.nodeId, expiresIn }), request));
-  }),
+  route(
+    "GET",
+    "/api/files/:nodeId/preview",
+    async ({ request, url, params }) => {
+      const userId = await requireAuth(request, prisma);
+      const expiresIn = Number(url.searchParams.get("expiresIn") ?? 900);
+      return json(
+        fileLink(
+          await previewFile({ userId, nodeId: params.nodeId, expiresIn }),
+          request,
+        ),
+      );
+    },
+  ),
+  route(
+    "GET",
+    "/api/files/:nodeId/download",
+    async ({ request, url, params }) => {
+      const userId = await requireAuth(request, prisma);
+      const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
+      return json(
+        fileLink(
+          await downloadFile({ userId, nodeId: params.nodeId, expiresIn }),
+          request,
+        ),
+      );
+    },
+  ),
   route("PATCH", "/api/files/:nodeId", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
-    const body = await bodyJson<{ name?: string; description?: string; isFavorite?: boolean; tags?: string[] }>(request);
-    return json(await updateNodeDetails({ userId, nodeId: params.nodeId, ...body }));
+    const body = await bodyJson<{
+      name?: string;
+      description?: string;
+      isFavorite?: boolean;
+      tags?: string[];
+    }>(request);
+    return json(
+      await updateNodeDetails({ userId, nodeId: params.nodeId, ...body }),
+    );
   }),
   route("POST", "/api/files/:nodeId/trash", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
@@ -351,7 +457,14 @@ const routes: Route[] = [
   route("POST", "/api/files/:nodeId/shares", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ expiresIn?: number }>(request);
-    return json(await createShareLink({ userId, nodeId: params.nodeId, expiresIn: body.expiresIn }), { status: 201 });
+    return json(
+      await createShareLink({
+        userId,
+        nodeId: params.nodeId,
+        expiresIn: body.expiresIn,
+      }),
+      { status: 201 },
+    );
   }),
   route("GET", "/api/files/:nodeId/shares", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
@@ -361,8 +474,12 @@ const routes: Route[] = [
     const userId = await requireAuth(request, prisma);
     return json(await revokeShareLink({ userId, linkId: params.linkId }));
   }),
-  route("GET", "/api/share/:token", async ({ params, request }) => json(fileLink(await resolveShareLink(params.token), request))),
-  route("GET", "/api/content/:token", async ({ params, request }) => streamChunkDownload(params.token, request)),
+  route("GET", "/api/share/:token", async ({ params, request }) =>
+    json(fileLink(await resolveShareLink(params.token), request)),
+  ),
+  route("GET", "/api/content/:token", async ({ params, request }) =>
+    streamChunkDownload(params.token, request),
+  ),
 
   route("POST", "/api/uploads/initiate", async ({ request }) => {
     const userId = await requireAuth(request, prisma);
@@ -387,7 +504,9 @@ const routes: Route[] = [
   }),
   route("GET", "/api/uploads/:id", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
-    return json(await getUploadSessionStatus({ userId, uploadSessionId: params.id }));
+    return json(
+      await getUploadSessionStatus({ userId, uploadSessionId: params.id }),
+    );
   }),
   route("POST", "/api/uploads/:id/part-url", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
@@ -402,15 +521,27 @@ const routes: Route[] = [
   }),
   route("GET", "/api/uploads/:id/parts", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
-    return json(await listUploadedParts({ userId, uploadSessionId: params.id }));
+    return json(
+      await listUploadedParts({ userId, uploadSessionId: params.id }),
+    );
   }),
-  route("POST", "/api/uploads/:id/complete", async ({ request, params, ctx, env }) => {
-    const userId = await requireAuth(request, prisma);
-    const body = await bodyJson<{ parts?: { partNumber: number; etag: string }[] }>(request);
-    const result = await requestUploadCompletion({ userId, uploadSessionId: params.id, parts: body.parts ?? [] });
-    await scheduleFinalize(env, ctx, params.id);
-    return json(result, { status: 202 });
-  }),
+  route(
+    "POST",
+    "/api/uploads/:id/complete",
+    async ({ request, params, ctx, env }) => {
+      const userId = await requireAuth(request, prisma);
+      const body = await bodyJson<{
+        parts?: { partNumber: number; etag: string }[];
+      }>(request);
+      const result = await requestUploadCompletion({
+        userId,
+        uploadSessionId: params.id,
+        parts: body.parts ?? [],
+      });
+      await scheduleFinalize(env, ctx, params.id);
+      return json(result, { status: 202 });
+    },
+  ),
   route("POST", "/api/uploads/:id/abort", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
     return json(await abortUpload({ userId, uploadSessionId: params.id }));
@@ -423,7 +554,14 @@ const routes: Route[] = [
   route("POST", "/api/apikeys", async ({ request }) => {
     const userId = await requireAuth(request, prisma);
     const body = await bodyJson<{ name?: string; expiresIn?: number }>(request);
-    return json(await createApiKey({ userId, name: body.name ?? "", expiresIn: body.expiresIn }), { status: 201 });
+    return json(
+      await createApiKey({
+        userId,
+        name: body.name ?? "",
+        expiresIn: body.expiresIn,
+      }),
+      { status: 201 },
+    );
   }),
   route("DELETE", "/api/apikeys/:keyId", async ({ request, params }) => {
     const userId = await requireAuth(request, prisma);
@@ -436,9 +574,14 @@ const routes: Route[] = [
     const parentId = url.searchParams.get("parentId");
     const type = url.searchParams.get("type");
     const search = url.searchParams.get("search");
-    if (parentId !== null) result = result.filter((node) => node.parentId === (parentId || null));
-    if (type === "FILE" || type === "FOLDER") result = result.filter((node) => node.type === type);
-    if (search) result = result.filter((node) => node.name.toLowerCase().includes(search.toLowerCase()));
+    if (parentId !== null)
+      result = result.filter((node) => node.parentId === (parentId || null));
+    if (type === "FILE" || type === "FOLDER")
+      result = result.filter((node) => node.type === type);
+    if (search)
+      result = result.filter((node) =>
+        node.name.toLowerCase().includes(search.toLowerCase()),
+      );
     return json({ data: result, total: result.length });
   }),
   route("GET", "/api/v1/files/:id", async ({ request, params, ctx }) => {
@@ -467,27 +610,51 @@ const routes: Route[] = [
   route("POST", "/api/v1/folders", async ({ request, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
     const body = await bodyJson<{ name?: string; parentId?: string }>(request);
-    return json(await createFolder({ userId, name: body.name ?? "", parentId: body.parentId }), { status: 201 });
+    return json(
+      await createFolder({
+        userId,
+        name: body.name ?? "",
+        parentId: body.parentId,
+      }),
+      { status: 201 },
+    );
   }),
   route("POST", "/api/v1/files/upload", async ({ request, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
     const file = await parseMultipartFile(request);
     return json(await uploadFile({ userId, ...file }), { status: 201 });
   }),
-  route("GET", "/api/v1/files/:id/download", async ({ request, url, params, ctx }) => {
-    const userId = await requireApiKey(request, prisma, ctx);
-    const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
-    return json(fileLink(await downloadFile({ userId, nodeId: params.id, expiresIn }), request));
-  }),
-  route("GET", "/api/v1/files/:id/preview", async ({ request, url, params, ctx }) => {
-    const userId = await requireApiKey(request, prisma, ctx);
-    const expiresIn = Number(url.searchParams.get("expiresIn") ?? 900);
-    return json(await previewFile({ userId, nodeId: params.id, expiresIn }));
-  }),
+  route(
+    "GET",
+    "/api/v1/files/:id/download",
+    async ({ request, url, params, ctx }) => {
+      const userId = await requireApiKey(request, prisma, ctx);
+      const expiresIn = Number(url.searchParams.get("expiresIn") ?? 3600);
+      return json(
+        fileLink(
+          await downloadFile({ userId, nodeId: params.id, expiresIn }),
+          request,
+        ),
+      );
+    },
+  ),
+  route(
+    "GET",
+    "/api/v1/files/:id/preview",
+    async ({ request, url, params, ctx }) => {
+      const userId = await requireApiKey(request, prisma, ctx);
+      const expiresIn = Number(url.searchParams.get("expiresIn") ?? 900);
+      return json(await previewFile({ userId, nodeId: params.id, expiresIn }));
+    },
+  ),
   route("PATCH", "/api/v1/files/:id", async ({ request, params, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
-    const body = await bodyJson<{ name?: string; description?: string }>(request);
-    return json(await updateNodeDetails({ userId, nodeId: params.id, ...body }));
+    const body = await bodyJson<{ name?: string; description?: string }>(
+      request,
+    );
+    return json(
+      await updateNodeDetails({ userId, nodeId: params.id, ...body }),
+    );
   }),
   route("DELETE", "/api/v1/files/:id", async ({ request, params, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
@@ -497,23 +664,42 @@ const routes: Route[] = [
   // API Key Trash & Quota Routes
   route("GET", "/api/v1/trash", async ({ request, url, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
-    return json(await listTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+    return json(
+      await listTrash({
+        userId,
+        driveId: url.searchParams.get("driveId") ?? undefined,
+      }),
+    );
   }),
   route("POST", "/api/v1/files/:id/trash", async ({ request, params, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
     return json(await trashNode({ userId, nodeId: params.id }));
   }),
-  route("POST", "/api/v1/files/:id/restore", async ({ request, params, ctx }) => {
-    const userId = await requireApiKey(request, prisma, ctx);
-    return json(await restoreNode({ userId, nodeId: params.id }));
-  }),
+  route(
+    "POST",
+    "/api/v1/files/:id/restore",
+    async ({ request, params, ctx }) => {
+      const userId = await requireApiKey(request, prisma, ctx);
+      return json(await restoreNode({ userId, nodeId: params.id }));
+    },
+  ),
   route("DELETE", "/api/v1/trash", async ({ request, url, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
-    return json(await emptyTrash({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+    return json(
+      await emptyTrash({
+        userId,
+        driveId: url.searchParams.get("driveId") ?? undefined,
+      }),
+    );
   }),
   route("GET", "/api/v1/storage/quota", async ({ request, url, ctx }) => {
     const userId = await requireApiKey(request, prisma, ctx);
-    return json(await getUserStorageQuota({ userId, driveId: url.searchParams.get("driveId") ?? undefined }));
+    return json(
+      await getUserStorageQuota({
+        userId,
+        driveId: url.searchParams.get("driveId") ?? undefined,
+      }),
+    );
   }),
 
   // ── Admin — Stats ─────────────────────────────────────────────────────────
@@ -527,9 +713,11 @@ const configureForRequest = (env: Env) => {
     APP_URL: env.APP_URL,
     RESEND_KEY: env.RESEND_KEY,
     JWT_SECRET: env.JWT_SECRET,
+    STORAGE_ENCRYPTION_KEY: env.STORAGE_ENCRYPTION_KEY,
   });
 
-  const connectionString = env.HYPERDRIVE?.connectionString ?? env.DIRECT_URL ?? env.DATABASE_URL;
+  const connectionString =
+    env.HYPERDRIVE?.connectionString ?? env.DIRECT_URL ?? env.DATABASE_URL;
   if (connectionString) {
     configurePrisma(connectionString);
   }
@@ -601,21 +789,7 @@ export default {
     return withPrismaContext(async () => {
       configureForRequest(env);
       try {
-        for (const message of batch.messages) {
-          try {
-            await finalizeUploadNow({
-              uploadSessionId: message.body.uploadSessionId,
-            });
-            message.ack();
-          } catch (error) {
-            console.error(
-              "Upload finalization failed",
-              message.body.uploadSessionId,
-              error,
-            );
-            message.retry();
-          }
-        }
+        await consumeFinalizations(batch);
       } finally {
         await disconnectPrisma();
       }
@@ -633,7 +807,9 @@ export default {
       withPrismaContext(async () => {
         configureForRequest(env);
         try {
-          await purgeExpiredTrash();
+          if (event.cron === "0 0 * * *") await purgeExpiredTrash();
+          if (env.UPLOAD_QUEUE)
+            await recoverPendingFinalizations(env.UPLOAD_QUEUE);
         } finally {
           await disconnectPrisma();
         }

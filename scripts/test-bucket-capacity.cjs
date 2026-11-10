@@ -10,7 +10,15 @@ function loadTs(relativePath, mocks = {}) {
   const loaded = new Module(filename, module);
   loaded.paths = Module._nodeModulePaths(path.dirname(filename));
   const original = loaded.require.bind(loaded);
-  loaded.require = (id) => id in mocks ? mocks[id] : id === "./chunkDownload" ? {} : original(id);
+  loaded.require = (id) => {
+    if (id in mocks) return id === "../utils/s3" ? { getDecryptedBucketConfig: (c) => c, ...mocks[id] } : mocks[id];
+    if (id === "./chunkDownload") return {};
+    if (id === "./storageAccess") return { async storageManagementScope() { return { ownerId: "u" }; }, async requireStorageAccess() {} };
+    if (id === "../utils/credentialEncryption") return { encryptCredentials: (c) => c };
+    if (id === "../utils/runtimeEnv" || id === "./runtimeEnv") return { getRuntimeValue() {} };
+    if (id === "./credentialEncryption") return loadTs("apps/backend/src/utils/credentialEncryption.ts");
+    return original(id);
+  };
   loaded._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText, filename);

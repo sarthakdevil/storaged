@@ -10,7 +10,10 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../utils/prisma";
-import { createS3Client } from "../utils/s3";
+import { createS3Client, getDecryptedBucketConfig } from "../utils/s3";
+import { encryptCredentials } from "../utils/credentialEncryption";
+import { getRuntimeValue } from "../utils/runtimeEnv";
+import { storageManagementScope, requireStorageAccess } from "./storageAccess";
 import { reserveUpload, resolveQuotaGb } from "./bucketCapacity";
 import {
   formatStorageSchemaError,
@@ -244,8 +247,8 @@ const sanitizeBucketConnection = (bucket: {
   createdAt: Date;
   updatedAt: Date;
 }) => {
-  const config = bucket.config as Record<string, unknown>;
-  const { secretAccessKey: _secretAccessKey, ...safeConfig } = config;
+  const config = getDecryptedBucketConfig(bucket.config as Record<string, unknown>);
+  const { secretAccessKey: _secretAccessKey, encryptedCredentials: _encrypted, ...safeConfig } = config;
 
   return {
     id: bucket.id,
@@ -370,16 +373,18 @@ const buildStorageConnectionView = async (bucket: {
   };
 };
 
-export const createStorageConnection = async (rawInput: unknown) => {
+export const createStorageConnection = async (rawInput: unknown, userId: string) => {
+  await storageManagementScope(userId);
   const input = parseStorageConnectionInput(rawInput);
   const config = buildConnectionConfig(input);
 
   const connection = await prisma.bucket.create({
     data: {
+      ownerId: userId,
       providerName: input.provider,
       displayName: input.displayName ?? null,
       bucketName: input.bucketName,
-      config: config as Prisma.InputJsonValue,
+      config: encryptCredentials({ ...config }, getRuntimeValue("STORAGE_ENCRYPTION_KEY")) as Prisma.InputJsonValue,
       isActive: input.isActive ?? true,
     },
   });
@@ -387,9 +392,11 @@ export const createStorageConnection = async (rawInput: unknown) => {
   return sanitizeBucketConnection(connection);
 };
 
-export const listStorageConnections = async (options?: StorageListOptions) => {
+export const listStorageConnections = async (options: StorageListOptions | undefined, userId: string) => {
+  const scope = await storageManagementScope(userId);
   const { limit, cursor } = normalizeStorageListOptions(options);
   const connections = await prisma.bucket.findMany({
+    where: scope,
     take: limit + 1,
     ...(cursor && {
       cursor: { id: cursor },
@@ -421,7 +428,8 @@ export const listStorageConnections = async (options?: StorageListOptions) => {
   };
 };
 
-export const getStorageConnection = async (id: string) => {
+export const getStorageConnection = async (id: string, userId: string) => {
+  await requireStorageAccess(userId, id);
   const connection = await prisma.bucket.findUnique({
     where: { id },
     include: {
@@ -448,7 +456,8 @@ export const getStorageConnection = async (id: string) => {
 export const updateStorageConnection = async ({
   id,
   input: rawInput,
-}: StorageConnectionUpdateInput) => {
+}: StorageConnectionUpdateInput, userId: string) => {
+  await requireStorageAccess(userId, id);
   const existingConnection = await prisma.bucket.findUnique({
     where: { id },
   });
@@ -457,8 +466,8 @@ export const updateStorageConnection = async ({
     throw new StorageError("Storage connection not found.", 404);
   }
 
-  const existingConfig =
-    (existingConnection.config as Record<string, unknown>) ?? {};
+  const existingConfig = getDecryptedBucketConfig(
+    (existingConnection.config as Record<string, unknown>) ?? {});
   const incomingInput =
     rawInput && typeof rawInput === "object" && !Array.isArray(rawInput)
       ? (rawInput as Record<string, unknown>)
@@ -514,7 +523,7 @@ export const updateStorageConnection = async ({
       providerName: input.provider,
       displayName: input.displayName ?? null,
       bucketName: input.bucketName,
-      config: config as Prisma.InputJsonValue,
+      config: encryptCredentials({ ...config }, getRuntimeValue("STORAGE_ENCRYPTION_KEY")) as Prisma.InputJsonValue,
       isActive: input.isActive ?? existingConnection.isActive,
     },
   });
@@ -522,7 +531,8 @@ export const updateStorageConnection = async ({
   return sanitizeBucketConnection(updatedConnection);
 };
 
-export const deleteStorageConnection = async (id: string) => {
+export const deleteStorageConnection = async (id: string, userId: string) => {
+  await requireStorageAccess(userId, id);
   await prisma.$transaction(async (tx) => {
     // Use the same lock order as upload admission, including an inactive target.
     await tx.$queryRaw`SELECT id FROM "Bucket" WHERE "isActive" = true OR id = ${id} ORDER BY id FOR UPDATE`;
@@ -562,7 +572,7 @@ type BucketConfig = {
 };
 
 const getBucketConfig = (config: Prisma.JsonValue): BucketConfig => {
-  const c = config as Record<string, unknown>;
+  const c = getDecryptedBucketConfig(config as Record<string, unknown>);
   return {
     endpointUrl: c.endpointUrl as string,
     region: c.region as string,
@@ -1371,7 +1381,7 @@ export const getUserStorageQuota = async ({
   const driveUsedBytes = drives.reduce((sum, d) => sum + d.usedBytes, 0n);
 
   const buckets = await prisma.bucket.findMany({
-    where: { isActive: true },
+    where: { isActive: true, ownerId: userId },
   });
 
   const bucketSummaries = buckets.map((bucket) => {
@@ -1630,9 +1640,11 @@ export const updateNodeDetails = async ({
   };
 };
 
-export const getStorageDashboard = async (options?: StorageListOptions) => {
+export const getStorageDashboard = async (options: StorageListOptions | undefined, userId: string) => {
+  const scope = await storageManagementScope(userId);
   const { limit, cursor } = normalizeStorageListOptions(options);
   const buckets = await prisma.bucket.findMany({
+    where: scope,
     orderBy: {
       createdAt: "desc",
     },

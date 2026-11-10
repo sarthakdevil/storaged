@@ -12,6 +12,7 @@
     "check-types": "turbo run check-types",
     "test:uploads": "node --test scripts/test-folder-upload.cjs",
     "test:capacity": "node --test scripts/test-bucket-capacity.cjs",
+    "test:security": "node --test scripts/test-storage-security.cjs",
     "db:generate": "npm run db:generate --workspace=@repo/db",
     "db:migrate": "npm run db:migrate --workspace=@repo/db",
     "prisma:generate": "prisma generate",

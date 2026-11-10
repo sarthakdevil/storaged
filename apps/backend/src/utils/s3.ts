@@ -1,4 +1,8 @@
 import { S3Client } from "@aws-sdk/client-s3";
+import { decryptCredentials } from "./credentialEncryption";
+import { getRuntimeValue } from "./runtimeEnv";
+export const getDecryptedBucketConfig = (config: Record<string, unknown>) =>
+  decryptCredentials(config, getRuntimeValue("STORAGE_ENCRYPTION_KEY"));
 
 type S3Config = {
   endpointUrl: string;
@@ -14,6 +18,7 @@ type S3Config = {
 const REQUEST_TIMEOUT_MS = 10_000;
 
 export const createS3Client = (config: S3Config, browserUpload = false) => {
+  config = getDecryptedBucketConfig(config) as S3Config;
   return new S3Client({
     endpoint: config.endpointUrl,
     region: config.region,
@@ -24,7 +29,9 @@ export const createS3Client = (config: S3Config, browserUpload = false) => {
     forcePathStyle: config.forcePathStyle,
     // A presigner has no file body. Do not sign the SDK's empty-body CRC32
     // into a URL that the browser will use to upload different bytes.
-    requestChecksumCalculation: browserUpload ? "WHEN_REQUIRED" : "WHEN_SUPPORTED",
+    requestChecksumCalculation: browserUpload
+      ? "WHEN_REQUIRED"
+      : "WHEN_SUPPORTED",
     requestHandler: { requestTimeout: REQUEST_TIMEOUT_MS },
   });
 };

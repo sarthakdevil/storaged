@@ -43,6 +43,7 @@ enum UploadSessionStatus {
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 model User {
+  storageBuckets Bucket[]
   id                  String               @id @default(uuid())
   email               String               @unique
   name                String?
@@ -170,6 +171,8 @@ model NodeTag {
 // ─── Storage buckets ──────────────────────────────────────────────────────────
 
 model Bucket {
+  ownerId String?
+  owner User? @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   uploadChunks UploadChunk[]
   id             String          @id @default(uuid())
   providerName   String
@@ -182,7 +185,8 @@ model Bucket {
   fileObjects    FileObject[]
   uploadSessions UploadSession[]
 
-  @@unique([providerName, bucketName])
+  @@unique([ownerId, providerName, bucketName])
+  @@index([ownerId])
 }
 
 model FileObject {

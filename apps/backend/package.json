@@ -6,7 +6,7 @@
     "dev": "npm run prisma:generate && wrangler dev --port 8787",
     "prisma:generate": "prisma generate --config ../../packages/db/prisma.config.ts && node ../../packages/db/scripts/patch-prisma-runtime.mjs",
     "build:cloudflare": "npm run prisma:generate && wrangler deploy --dry-run",
-    "cf-typegen": "wrangler types src/worker-configuration.d.ts",
+    "cf-typegen": "wrangler types src/worker-configuration.d.ts --include-runtime false",
     "deploy:cloudflare": "npm run prisma:generate && wrangler deploy",
     "prisma:migrate:deploy": "prisma migrate deploy --config ../../packages/db/prisma.config.ts",
     "preview:cloudflare": "wrangler dev --local --port 8787",

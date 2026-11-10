@@ -12,7 +12,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Prisma } from "../generated/prisma/client";
 import { prisma } from "../utils/prisma";
-import { createS3Client } from "../utils/s3";
+import { createS3Client, getDecryptedBucketConfig } from "../utils/s3";
 import { reserveUpload } from "./bucketCapacity";
 
 class UploadError extends Error {
@@ -37,7 +37,7 @@ type BucketConfig = {
 };
 
 const getBucketConfig = (config: Prisma.JsonValue): BucketConfig => {
-  const c = config as Record<string, unknown>;
+  const c = getDecryptedBucketConfig(config as Record<string, unknown>);
   return {
     endpointUrl: c.endpointUrl as string,
     region: c.region as string,
@@ -632,6 +632,13 @@ export const finalizeUploadNow = async ({
     | { partNumber: number; etag: string }[]
     | null;
   if (!parts || parts.length === 0) {
+    await prisma.uploadSession.updateMany({
+      where: { id: session.id, status: "COMPLETING" },
+      data: {
+        status: "FAILED",
+        errorMessage: "No completion parts stored for this upload.",
+      },
+    });
     throw new UploadError("No completion parts stored for this upload.", 400);
   }
 
@@ -660,25 +667,47 @@ export const finalizeUploadNow = async ({
         }
       }
     } else {
-      await s3Client.send(
-        new CompleteMultipartUploadCommand({
-          Bucket: session.bucket.bucketName,
-          Key: session.objectKey,
-          UploadId: session.uploadId,
-          MultipartUpload: {
-            Parts: parts
-              .slice()
-              .sort((a, b) => a.partNumber - b.partNumber)
-              .map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
-          },
-        }),
-      );
+      try {
+        await s3Client.send(
+          new CompleteMultipartUploadCommand({
+            Bucket: session.bucket.bucketName,
+            Key: session.objectKey,
+            UploadId: session.uploadId,
+            MultipartUpload: {
+              Parts: parts
+                .slice()
+                .sort((a, b) => a.partNumber - b.partNumber)
+                .map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
+            },
+          }),
+        );
+      } catch (error) {
+        if (getS3ErrorCode(error) !== "NoSuchUpload") throw error;
+        // A previous queue delivery may have completed S3 before its DB commit.
+        const head = await s3Client.send(
+          new HeadObjectCommand({
+            Bucket: session.bucket.bucketName,
+            Key: session.objectKey,
+          }),
+        );
+        if (head.ContentLength !== Number(session.sizeBytes))
+          throw new UploadError(
+            "Completed object size does not match the upload.",
+            409,
+          );
+      }
     }
   } catch (error) {
     const msg = describeS3Failure(error);
     await prisma.uploadSession.updateMany({
       where: { id: session.id, status: "COMPLETING" },
-      data: { status: "FAILED", errorMessage: msg },
+      data: {
+        status:
+          isUploadError(error) && error.statusCode < 500
+            ? "FAILED"
+            : "COMPLETING",
+        errorMessage: msg,
+      },
     });
     throw new UploadError(msg, 502);
   }
@@ -810,10 +839,16 @@ export const finalizeUploadNow = async ({
 
     await prisma.uploadSession.updateMany({
       where: { id: session.id, status: "COMPLETING" },
-      data: { status: "FAILED", errorMessage: message },
+      data: {
+        status: isUniqueConstraintError(lastError) ? "FAILED" : "COMPLETING",
+        errorMessage: message,
+      },
     });
 
-    throw new UploadError(message, 409);
+    throw new UploadError(
+      message,
+      isUniqueConstraintError(lastError) ? 409 : 502,
+    );
   }
 
   return {

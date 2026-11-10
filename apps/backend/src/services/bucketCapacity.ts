@@ -117,9 +117,9 @@ export async function reserveUpload(
   return prisma.$transaction(async (tx) => {
     // Serialize admission across Workers, keeping provider I/O outside the lock.
     // Row locks are released automatically at transaction completion.
-    await tx.$queryRaw`SELECT id FROM "Bucket" WHERE "isActive" = true ORDER BY id FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "Bucket" WHERE "isActive" = true AND "ownerId" = ${input.userId} ORDER BY id FOR UPDATE`;
     const buckets = await tx.bucket.findMany({
-      where: { isActive: true },
+      where: { isActive: true, ownerId: input.userId },
       include: {
         fileObjects: {
           select: { sizeBytes: true, node: { select: { sizeBytes: true } } },
